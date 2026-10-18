@@ -150,3 +150,25 @@ def test_parse_rejects_bad_checksum_and_other_types() -> None:
 def test_kelvin_roundtrip() -> None:
     for kelvin in (2000, 2700, 4000, 6500, 9000):
         assert protocol.rgb_to_kelvin(protocol.kelvin_to_rgb(kelvin)) == kelvin
+
+
+def test_rgbww_colour_frames() -> None:
+    frame = protocol.rgb_frame(255, 0, 0, submode=protocol.SUBMODE_COLOR_RGBWW)
+    assert frame[:6] == bytes([0x33, 0x05, 0x0D, 0xFF, 0x00, 0x00])
+    assert protocol.verify_frame(frame)
+    white = protocol.color_temp_frame(2749, submode=protocol.SUBMODE_COLOR_RGBWW)
+    # Snapped to 2700 K = 0x0A8C, white point FF FF FF, then the tint.
+    assert white[2:8] == bytes([0x0D, 0xFF, 0xFF, 0xFF, 0x0A, 0x8C])
+    assert white[8:11] == bytes(protocol.kelvin_to_rgb(2700))
+
+
+def test_parse_rgbww_mode_reply() -> None:
+    body = bytes([0xAA, 0x05, 0x0D, 0x00, 0x00, 0xFF, 0x00, 0x00, 0, 0, 0]).ljust(19, b"\x00")
+    reply = protocol.parse_reply(body + bytes([protocol.checksum(body)]))
+    assert reply is not None and reply.mode is not None
+    assert reply.mode.rgb == (0, 0, 255) and not reply.mode.is_white
+    body = bytes([0xAA, 0x05, 0x0D, 0xFF, 0xFF, 0xFF, 0x0A, 0x8C, 0xFF, 0xA9, 0x5D]).ljust(
+        19, b"\x00"
+    )
+    reply = protocol.parse_reply(body + bytes([protocol.checksum(body)]))
+    assert reply.mode.color_temp_kelvin == 2700 and reply.mode.white_tint == (0xFF, 0xA9, 0x5D)

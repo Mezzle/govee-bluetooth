@@ -196,6 +196,9 @@ class GoveeBleDevice:
             )
         if mode is not None and mode.mode is not None:
             changes.update(self._changes_from_mode(mode.mode))
+        if brightness is not None and brightness.brightness_level is not None:
+            extra = changes.get("extra", self.state.extra)
+            changes["extra"] = {**extra, "brightness_raw": brightness.brightness_level}
         if firmware is not None and firmware.version:
             changes["firmware"] = firmware.version
         self._set_state(**changes)

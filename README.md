@@ -78,7 +78,7 @@ Discovered automatically (advertised as `ihoment_`, `Govee_`, `GBK_` or `GVH` + 
 | H6110, H6109, H614A, H614B, H614E | Same app module as the H6159 in the decompiled Govee app. Untested on hardware. |
 | H6127, H6107, H6116, H6161, H6129, H6139, H6141, H6142 | Same legacy colour dialect per the decompiled app and community captures. Untested on hardware. |
 | H6104, H6117, H6125, H6126, H6135, H6137, H6138, H6160, H6163, H6170, H6171, H6172, H6182, H6188, H6195 | Same legacy colour dialect per community captures. Untested on hardware. |
-| H6181 (TV backlight) | Same legacy colour dialect per community captures. Untested on hardware. |
+| H6181 | Verified on hardware (firmware 2.03.11) through an ESPHome proxy: power, brightness, RGB, colour temperature, scenes and read-back. Uses the 0x0D colour scheme and 0-100 brightness, unlike the rest of this table. |
 | H7020, H7021 (outdoor string lights) | Same legacy colour dialect per community captures. Untested on hardware. |
 | H6143, H6144, H619A, H619B, H619C, H619E, H619Z, H61A0, H61A1, H61A2, H61E1 (RGBIC strips) | Segmented `0x15` colour dialect with a whole-strip mask, brightness 0-100, per the decompiled Govee app. Whole-strip colour and white only; no scenes yet. Untested on hardware. |
 | H6199 (RGBIC TV backlight) | Same `0x15` dialect. Untested on hardware. |
