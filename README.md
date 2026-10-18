@@ -24,7 +24,10 @@ is used by the rest of that generation of strips (see
 - Connections are short-lived by default so a proxy's limited connection
   slots are shared fairly between strips, with a configurable linger so a
   burst of commands reuses one connection.
-- Diagnostics download with the last known state and Bluetooth reachability.
+- Unknown models are asked which colour command format they speak, with a
+  read-only check first and an opt-in active probe behind a consent screen.
+- Diagnostics download with the last known state, Bluetooth reachability and
+  the colour sub-mode from the table, the light and any override.
 
 ## Requirements
 
@@ -58,7 +61,62 @@ To add one by hand, use **Add integration → Govee Bluetooth**. It lists every
 Govee light currently visible to a connectable adapter. You can override the
 model if the advertised name does not include it.
 
+### Unknown models: finding the colour dialect
+
+Govee reuses a few colour command formats ("sub-modes") across its range, and
+the model table in this integration is built from a decompiled app and
+community captures. That table can be wrong: the app lists the H6181 as
+`0x02` / 0-255, but real firmware 2.03.11 speaks `0x0D` / 0-100. So for a
+model that is not in the table, setup asks the light instead of guessing.
+
+**Step 1, read-only, always runs.** After you confirm the name, Home Assistant
+connects and sends the four status reads (firmware version, power, brightness,
+mode). Nothing is written. If the light is showing a plain colour, the mode
+reply names the sub-mode (`0x02`, `0x0D` or `0x15`), it is stored with the
+firmware string, and setup finishes. If the light is running a scene, music
+mode, or something unrecognised, a screen shows what was learned and offers:
+
+- *Set the light to a plain colour in the Govee app, then retry* (safest);
+- *Run the active probe* (step 2);
+- *Skip* and finish with the H6159 dialect, which you can change later under
+  **Configure**.
+
+The same check also runs for **known** models on every status read. If the
+light reports a colour sub-mode that disagrees with the table, the light wins,
+a warning is logged, and the observed value is stored. That is what would have
+caught the H6181.
+
+**Step 2, active, opt-in only.** This writes a test colour to the light in
+each candidate sub-mode (table guess first) and reads the mode back. A
+sub-mode is accepted only when the reply echoes both the sub-mode byte and the
+RGB that was sent; firmware that does not understand a frame usually ignores
+it and keeps reporting the previous mode, so the sub-mode byte alone proves
+nothing. The consent screen states the risk, and so does this README:
+
+- the light will change colour briefly;
+- writes in an unsupported format have not been seen to damage either tested
+  light (H6159, H6181) but cannot be guaranteed harmless;
+- if the light stops responding, recovery is a power cycle of the light
+  followed by a reload of the config entry.
+
+The probe records power, brightness and mode first and restores what it can
+afterwards. It never sends scene IDs, never writes brightness above 100, and
+if the connection drops mid-sequence it stops, reports the partial result and
+does not retry. Only `0x02` and `0x0D` are ever written: the `0x15` mode reply
+carries no RGB, so an `0x15` write could never be confirmed and is not worth
+the risk. `0x15` is still detected by step 1 when the light is already in it.
+
+The brightness scale is **not** probed; the only way to tell 0-255 from 0-100
+is to write above 100, which the H6181 silently ignores. It is derived from
+the detected sub-mode instead (`0x02` → 0-255, `0x0D`/`0x15` → 0-100) and can
+be overridden under **Configure**.
+
 ### Options
+
+**Configure** opens a menu: *Settings and manual overrides*, *Re-run the
+read-only dialect check* and *Run the active dialect probe*. The last two are
+for when a firmware update changes the dialect or you change your mind about
+step 2; the active one goes through the same consent screen.
 
 Open the integration's **Configure** dialog to tune:
 
@@ -66,7 +124,8 @@ Open the integration's **Configure** dialog to tune:
 | --- | --- | --- |
 | Poll interval | 120 s | Each poll opens a brief connection and reads power, brightness and mode. |
 | Keep connection open after a command | 8 s | Consecutive commands (e.g. dragging a slider) reuse the connection. `0` disconnects immediately. |
-| Brightness scale | 0-255 | Confirmed on the H6159: the strip echoes raw values above 100 back unchanged. Some newer firmware, including some H616x/H618x units, uses 0-100. If brightness looks wrong, switch. |
+| Colour sub-mode override | Automatic | Automatic uses the sub-mode the light reported, else the model table. Force `0x02`, `0x0D` or `0x15` if colour commands are ignored and a probe could not settle it. An override also stops the on-read check from switching dialect, though the disagreement is still logged. |
+| Brightness scale override | Automatic | Automatic derives the scale from the colour dialect (`0x02` is 0-255, confirmed on the H6159; `0x0D` and `0x15` are 0-100, confirmed on the H6181). If brightness only ever looks dim or jumps to full, force the other scale. |
 
 ## Supported models
 
@@ -91,9 +150,11 @@ a strip from that range jumps to full brightness at low slider values, switch th
 RGBIC models drive every segment the same colour. Per-segment colour, music
 mode and the RGBIC scene tables are not implemented yet.
 
-Any other Govee light can be added manually and will be driven with the H6159
-dialect. An RGBIC light that is not in the table will switch on and off but
-ignore colour; open an issue with the model and it can be added as a profile.
+Any other Govee light can be added manually. Setup then runs the dialect probe
+described under [Setup](#unknown-models-finding-the-colour-dialect); if that
+cannot settle it, the light is driven with the H6159 dialect and the sub-mode
+can be forced under **Configure**. Open an issue with the model and the
+detected sub-mode and it can be added to the table.
 
 ## How it talks to the strip
 
@@ -130,7 +191,11 @@ decompiled-app protocol reference in Brady-Woods/govee-ble-local.
   Assistant's own reachability explanation.
 - **Commands time out while the Govee app is open**: close the app. The strip
   only accepts one connection.
-- **Brightness looks wrong**: switch the brightness scale in Options.
+- **Brightness looks wrong**: force the brightness scale under Configure.
+- **Colour is ignored on a model not in the table**: run the read-only check
+  from Configure with the light showing a plain colour, or the active probe.
+- **Light unresponsive after the active probe**: power-cycle it, then reload
+  the config entry.
 - **Enable debug logging** to see every frame:
 
   ```yaml

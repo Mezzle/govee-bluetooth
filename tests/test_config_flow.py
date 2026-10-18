@@ -4,14 +4,19 @@ from __future__ import annotations
 
 from unittest.mock import patch
 
+import pytest
 from homeassistant import config_entries
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
+from custom_components.govee_bluetooth import protocol
 from custom_components.govee_bluetooth.const import (
     CONF_ADDRESS,
     CONF_BRIGHTNESS_SCALE,
+    CONF_COLOR_SUBMODE,
+    CONF_DETECTED_SUBMODE,
+    CONF_FIRMWARE,
     CONF_IDLE_DISCONNECT,
     CONF_MODEL,
     CONF_NAME,
@@ -19,7 +24,15 @@ from custom_components.govee_bluetooth.const import (
     DOMAIN,
 )
 
-from .conftest import ADDRESS, LOCAL_NAME, inject_advertisement, make_service_info
+from .conftest import (
+    ADDRESS,
+    LOCAL_NAME,
+    FakeGoveeClient,
+    inject_advertisement,
+    make_service_info,
+)
+
+UNKNOWN_NAME = "ihoment_H6999_02DB"
 
 
 async def test_bluetooth_discovery_creates_entry(
@@ -127,24 +140,48 @@ async def test_user_flow_aborts_without_scanners(
     assert result["reason"] == "no_scanners"
 
 
-async def test_options_flow(hass: HomeAssistant, bluetooth_ready: None, fake_client) -> None:
+async def _setup_entry(hass: HomeAssistant, data: dict | None = None) -> MockConfigEntry:
     inject_advertisement(hass, make_service_info())
     entry = MockConfigEntry(
         domain=DOMAIN,
         unique_id=ADDRESS,
         title=LOCAL_NAME,
-        data={CONF_ADDRESS: ADDRESS, CONF_NAME: LOCAL_NAME, CONF_MODEL: "H6159"},
+        data=data or {CONF_ADDRESS: ADDRESS, CONF_NAME: LOCAL_NAME, CONF_MODEL: "H6159"},
     )
     entry.add_to_hass(hass)
     assert await hass.config_entries.async_setup(entry.entry_id)
     await entry.runtime_data.initial_refresh
     await hass.async_block_till_done()
+    return entry
+
+
+async def _finish_progress(hass: HomeAssistant, result: dict, manager) -> dict:
+    """Wait for a progress step's task and fetch the step that follows it."""
+    assert result["type"] is FlowResultType.SHOW_PROGRESS
+    await hass.async_block_till_done()
+    return await manager.async_configure(result["flow_id"])
+
+
+async def test_options_flow(hass: HomeAssistant, bluetooth_ready: None, fake_client) -> None:
+    entry = await _setup_entry(hass)
 
     result = await hass.config_entries.options.async_init(entry.entry_id)
+    assert result["type"] is FlowResultType.MENU
+    assert result["menu_options"] == ["settings", "probe", "active_consent"]
+    result = await hass.config_entries.options.async_configure(
+        result["flow_id"], user_input={"next_step_id": "settings"}
+    )
     assert result["type"] is FlowResultType.FORM
+    assert result["step_id"] == "settings"
+    assert result["description_placeholders"]["table_submode"] == "0x02"
     result = await hass.config_entries.options.async_configure(
         result["flow_id"],
-        user_input={CONF_POLL_INTERVAL: 30, CONF_IDLE_DISCONNECT: 0, CONF_BRIGHTNESS_SCALE: "100"},
+        user_input={
+            CONF_POLL_INTERVAL: 30,
+            CONF_IDLE_DISCONNECT: 0,
+            CONF_BRIGHTNESS_SCALE: "100",
+            CONF_COLOR_SUBMODE: "auto",
+        },
     )
     assert result["type"] is FlowResultType.CREATE_ENTRY
     await hass.async_block_till_done()
@@ -155,3 +192,315 @@ async def test_options_flow(hass: HomeAssistant, bluetooth_ready: None, fake_cli
     }
     # Reload picked the new scale up.
     assert entry.runtime_data.device.profile.brightness_scale == 100
+
+
+async def test_options_flow_manual_submode_override(
+    hass: HomeAssistant, bluetooth_ready: None, fake_client
+) -> None:
+    entry = await _setup_entry(hass)
+    result = await hass.config_entries.options.async_init(entry.entry_id)
+    result = await hass.config_entries.options.async_configure(
+        result["flow_id"], user_input={"next_step_id": "settings"}
+    )
+    result = await hass.config_entries.options.async_configure(
+        result["flow_id"],
+        user_input={
+            CONF_POLL_INTERVAL: 120,
+            CONF_IDLE_DISCONNECT: 8,
+            CONF_BRIGHTNESS_SCALE: "auto",
+            CONF_COLOR_SUBMODE: "13",
+        },
+    )
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    await hass.async_block_till_done()
+    assert entry.options[CONF_COLOR_SUBMODE] == 0x0D
+    assert CONF_BRIGHTNESS_SCALE not in entry.options
+    profile = entry.runtime_data.device.profile
+    assert profile.color_submode == 0x0D
+    assert profile.brightness_scale == 100  # derived from the override
+
+
+# -- unknown models: read-only probe --------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("mode_payload", "expected"),
+    [
+        ([0x02, 1, 2, 3, 0], 0x02),
+        ([0x0D, 1, 2, 3, 0, 0], 0x0D),
+        ([0x15, 0x01, 0, 0], 0x15),
+    ],
+)
+async def test_unknown_model_detected_by_read_only_probe(
+    hass: HomeAssistant,
+    bluetooth_ready: None,
+    fake_client: FakeGoveeClient,
+    mode_payload: list[int],
+    expected: int,
+) -> None:
+    fake_client.set_mode(mode_payload[0], mode_payload[1:])
+    inject_advertisement(hass, make_service_info(name=UNKNOWN_NAME))
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN,
+        context={"source": config_entries.SOURCE_BLUETOOTH},
+        data=make_service_info(name=UNKNOWN_NAME),
+    )
+    assert result["step_id"] == "bluetooth_confirm"
+    assert result["description_placeholders"]["model"] == "H6999"
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], user_input={CONF_NAME: "Mystery"}
+    )
+    assert result["type"] is FlowResultType.FORM
+    assert result["step_id"] == "unknown_model"
+    result = await hass.config_entries.flow.async_configure(result["flow_id"], user_input={})
+    assert result["type"] is FlowResultType.SHOW_PROGRESS
+    assert result["progress_action"] == "probe"
+    result = await _finish_progress(hass, result, hass.config_entries.flow)
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    assert result["data"] == {
+        CONF_ADDRESS: ADDRESS,
+        CONF_NAME: "Mystery",
+        CONF_MODEL: "H6999",
+        CONF_DETECTED_SUBMODE: expected,
+        CONF_FIRMWARE: "1.00.17",
+    }
+    # Read-only: no 0x33 frames went out, and the connection was released.
+    assert fake_client.commands == []
+    assert fake_client.disconnects == 1
+
+
+async def test_unknown_model_in_scene_offers_fallback_and_skip(
+    hass: HomeAssistant, bluetooth_ready: None, fake_client: FakeGoveeClient
+) -> None:
+    fake_client.set_mode(protocol.SUBMODE_SCENE, [0x04])
+    inject_advertisement(hass, make_service_info(name=UNKNOWN_NAME))
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN,
+        context={"source": config_entries.SOURCE_BLUETOOTH},
+        data=make_service_info(name=UNKNOWN_NAME),
+    )
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], user_input={CONF_NAME: "Mystery"}
+    )
+    result = await hass.config_entries.flow.async_configure(result["flow_id"], user_input={})
+    result = await _finish_progress(hass, result, hass.config_entries.flow)
+    assert result["type"] is FlowResultType.FORM
+    assert result["step_id"] == "probe_fallback"
+    placeholders = result["description_placeholders"]
+    assert placeholders["firmware"] == "1.00.17"
+    assert placeholders["mode"] == "scene (0x04)"
+    choices = [o["value"] for o in result["data_schema"].schema["choice"].config["options"]]
+    assert choices == ["retry", "active", "skip"]
+
+    # Retry while still in scene mode lands on the same screen.
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], user_input={"choice": "retry"}
+    )
+    result = await _finish_progress(hass, result, hass.config_entries.flow)
+    assert result["step_id"] == "probe_fallback"
+
+    # Declining completes setup with the unverified H6159 dialect.
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], user_input={"choice": "skip"}
+    )
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    assert result["data"] == {
+        CONF_ADDRESS: ADDRESS,
+        CONF_NAME: "Mystery",
+        CONF_MODEL: "H6999",
+        CONF_FIRMWARE: "1.00.17",
+    }
+    assert fake_client.commands == []
+
+
+async def test_unknown_model_connect_failure_falls_through(
+    hass: HomeAssistant, bluetooth_ready: None
+) -> None:
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN,
+        context={"source": config_entries.SOURCE_BLUETOOTH},
+        data=make_service_info(name=UNKNOWN_NAME),
+    )
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], user_input={CONF_NAME: "Mystery"}
+    )
+    # No advertisement was injected, so the connect fails before its first
+    # await and the eager progress task is already done when the step returns.
+    result = await hass.config_entries.flow.async_configure(result["flow_id"], user_input={})
+    if result["type"] is FlowResultType.SHOW_PROGRESS:
+        result = await _finish_progress(hass, result, hass.config_entries.flow)
+    assert result["type"] is FlowResultType.FORM
+    assert result["step_id"] == "probe_fallback"
+    assert result["description_placeholders"]["mode"] == "no reply"
+
+
+# -- unknown models: active probe ---------------------------------------------
+
+
+async def _reach_consent(hass: HomeAssistant, fake_client: FakeGoveeClient) -> dict:
+    fake_client.set_mode(protocol.SUBMODE_SCENE, [0x04])
+    inject_advertisement(hass, make_service_info(name=UNKNOWN_NAME))
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN,
+        context={"source": config_entries.SOURCE_BLUETOOTH},
+        data=make_service_info(name=UNKNOWN_NAME),
+    )
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], user_input={CONF_NAME: "Mystery"}
+    )
+    result = await hass.config_entries.flow.async_configure(result["flow_id"], user_input={})
+    result = await _finish_progress(hass, result, hass.config_entries.flow)
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], user_input={"choice": "active"}
+    )
+    assert result["type"] is FlowResultType.FORM
+    assert result["step_id"] == "active_consent"
+    return result
+
+
+async def test_active_consent_screen_states_the_risk(
+    hass: HomeAssistant, bluetooth_ready: None, fake_client: FakeGoveeClient
+) -> None:
+    import json
+    from pathlib import Path
+
+    result = await _reach_consent(hass, fake_client)
+    strings = json.loads(
+        (Path(__file__).parents[1] / "custom_components/govee_bluetooth/strings.json").read_text()
+    )
+    for section in ("config", "options"):
+        text = strings[section]["step"]["active_consent"]["description"]
+        assert "change colour briefly" in text
+        assert "cannot be guaranteed harmless" in text
+        assert "H6159, H6181" in text
+        assert "power cycle" in text and "reload" in text
+
+    # The box must be ticked; an untouched form stays on the consent screen.
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], user_input={"consent": False}
+    )
+    assert result["type"] is FlowResultType.FORM
+    assert result["step_id"] == "active_consent"
+    assert result["errors"] == {"consent": "consent_required"}
+    assert fake_client.commands == []
+
+
+async def test_active_probe_detects_rgbww_firmware(
+    hass: HomeAssistant, bluetooth_ready: None
+) -> None:
+    """An H6181-like light: ignores 0x02, echoes 0x0D. The table prior is 0x02 for unknowns."""
+    client = FakeGoveeClient(speaks=protocol.SUBMODE_COLOR_RGBWW, brightness=40)
+
+    async def _establish(_cls, _device, _name, **_kwargs):
+        client.is_connected = True
+        return client
+
+    with patch(
+        "custom_components.govee_bluetooth.device.establish_connection", side_effect=_establish
+    ):
+        result = await _reach_consent(hass, client)
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"], user_input={"consent": True}
+        )
+        assert result["type"] is FlowResultType.SHOW_PROGRESS
+        assert result["progress_action"] == "active_probe"
+        result = await _finish_progress(hass, result, hass.config_entries.flow)
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    assert result["data"][CONF_DETECTED_SUBMODE] == 0x0D
+    assert result["data"][CONF_FIRMWARE] == "1.00.17"
+    mode_writes = [c for c in client.commands if c[1] == protocol.CMD_MODE]
+    assert [c[2] for c in mode_writes] == [0x02, 0x0D]  # table prior first, then the echoing one
+    assert all(c[2] != protocol.SUBMODE_SCENE for c in mode_writes)
+    brightness_writes = [c for c in client.commands if c[1] == protocol.CMD_BRIGHTNESS]
+    assert brightness_writes == [protocol.build_frame(protocol.CMD_BRIGHTNESS, [40])]
+    assert client.disconnects >= 1
+
+
+async def test_active_probe_disconnect_reports_partial_result(
+    hass: HomeAssistant, bluetooth_ready: None
+) -> None:
+    client = FakeGoveeClient(speaks=protocol.SUBMODE_COLOR_RGBWW, fail_after_writes=1)
+
+    async def _establish(_cls, _device, _name, **_kwargs):
+        client.is_connected = True
+        return client
+
+    with patch(
+        "custom_components.govee_bluetooth.device.establish_connection", side_effect=_establish
+    ):
+        result = await _reach_consent(hass, client)
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"], user_input={"consent": True}
+        )
+        result = await _finish_progress(hass, result, hass.config_entries.flow)
+    assert result["type"] is FlowResultType.FORM
+    assert result["step_id"] == "active_failed"
+    placeholders = result["description_placeholders"]
+    assert placeholders["attempted"] == "0x02, 0x0d"
+    assert "Stopped early" in placeholders["detail"]
+    assert len(client.commands) == 2  # the dropped write was the last one; no retry
+
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], user_input={"choice": "skip"}
+    )
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    assert CONF_DETECTED_SUBMODE not in result["data"]
+
+
+# -- options flow: re-run probes ---------------------------------------------
+
+
+async def test_options_rerun_read_only_probe_stores_detected_submode(
+    hass: HomeAssistant, bluetooth_ready: None, fake_client: FakeGoveeClient
+) -> None:
+    entry = await _setup_entry(
+        hass, data={CONF_ADDRESS: ADDRESS, CONF_NAME: LOCAL_NAME, CONF_MODEL: "H6999"}
+    )
+    assert entry.runtime_data.device.profile.color_submode == 0x02
+    # Firmware update moved the light to the RGBWW dialect.
+    fake_client.set_mode(0x0D, [5, 6, 7, 0, 0])
+    fake_client.writes.clear()
+
+    result = await hass.config_entries.options.async_init(entry.entry_id)
+    result = await hass.config_entries.options.async_configure(
+        result["flow_id"], user_input={"next_step_id": "probe"}
+    )
+    result = await _finish_progress(hass, result, hass.config_entries.options)
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    await hass.async_block_till_done()
+    assert entry.data[CONF_DETECTED_SUBMODE] == 0x0D
+    assert entry.data[CONF_FIRMWARE] == "1.00.17"
+    assert entry.runtime_data.device.profile.color_submode == 0x0D
+    assert entry.runtime_data.device.profile.brightness_scale == 100
+    assert fake_client.commands == []
+
+
+async def test_options_active_probe_requires_consent_then_runs(
+    hass: HomeAssistant, bluetooth_ready: None
+) -> None:
+    client = FakeGoveeClient(speaks=protocol.SUBMODE_COLOR_RGBWW)
+    client.set_mode(protocol.SUBMODE_SCENE, [0x04])
+
+    async def _establish(_cls, _device, _name, **_kwargs):
+        client.is_connected = True
+        return client
+
+    with patch(
+        "custom_components.govee_bluetooth.device.establish_connection", side_effect=_establish
+    ):
+        entry = await _setup_entry(
+            hass, data={CONF_ADDRESS: ADDRESS, CONF_NAME: LOCAL_NAME, CONF_MODEL: "H6999"}
+        )
+        result = await hass.config_entries.options.async_init(entry.entry_id)
+        result = await hass.config_entries.options.async_configure(
+            result["flow_id"], user_input={"next_step_id": "active_consent"}
+        )
+        assert result["step_id"] == "active_consent"
+        result = await hass.config_entries.options.async_configure(
+            result["flow_id"], user_input={"consent": True}
+        )
+        result = await _finish_progress(hass, result, hass.config_entries.options)
+        assert result["type"] is FlowResultType.CREATE_ENTRY
+        await hass.async_block_till_done()
+    assert entry.data[CONF_DETECTED_SUBMODE] == 0x0D
+    assert entry.runtime_data.device.profile.color_submode == 0x0D

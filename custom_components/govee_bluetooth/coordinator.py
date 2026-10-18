@@ -38,6 +38,9 @@ class GoveeCoordinator(DataUpdateCoordinator[GoveeState]):
         )
         self.device = device
         self.initial_refresh: asyncio.Task[None] | None = None
+        # Snapshot used by the entry update listener to tell an options change
+        # from a data update the device made itself.
+        self.options_at_setup: dict = {}
         self.ble_seen = bluetooth.async_address_present(hass, device.address, connectable=True)
         self._unsubscribers = [
             device.async_add_listener(self._handle_device_state),

@@ -111,10 +111,7 @@ class FakeGoveeClient:
             raise BleakError("not connected")
         self.writes.append(frame)
         if frame[0] == protocol.TYPE_WRITE:
-            if (
-                self.fail_after_writes is not None
-                and len(self.commands) > self.fail_after_writes
-            ):
+            if self.fail_after_writes is not None and len(self.commands) > self.fail_after_writes:
                 self.is_connected = False
                 raise BleakError("link dropped")
             if frame[1] == protocol.CMD_MODE and frame[2] == self.speaks:

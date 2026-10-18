@@ -95,6 +95,11 @@ class _ProbeRunner:
 
     Each probe opens its own short-lived connection through a throwaway
     :class:`GoveeBleDevice`, so it never competes with a running entry's lock.
+
+    A progress task that finishes eagerly (a connect that fails before its
+    first await) makes Home Assistant call the step after the progress step
+    with the *previous* step's user input, so the form steps that follow a
+    probe only act on input that carries their own field.
     """
 
     hass: HomeAssistant
@@ -326,7 +331,7 @@ class GoveeBluetoothConfigFlow(ConfigFlow, _ProbeRunner, domain=DOMAIN):
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
         """Step 1 could not see a colour sub-mode: retry, go active, or accept the default."""
-        if user_input is not None:
+        if user_input is not None and "choice" in user_input:
             choice = user_input["choice"]
             if choice == CHOICE_RETRY:
                 return await self.async_step_probe()
@@ -368,8 +373,8 @@ class GoveeBluetoothConfigFlow(ConfigFlow, _ProbeRunner, domain=DOMAIN):
     ) -> ConfigFlowResult:
         """Step 2 consent screen. The description carries the risk wording."""
         errors: dict[str, str] = {}
-        if user_input is not None:
-            if user_input.get("consent"):
+        if user_input is not None and "consent" in user_input:
+            if user_input["consent"]:
                 return await self.async_step_active_probe()
             errors["consent"] = "consent_required"
         return self.async_show_form(
@@ -404,7 +409,7 @@ class GoveeBluetoothConfigFlow(ConfigFlow, _ProbeRunner, domain=DOMAIN):
     async def async_step_active_failed(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
-        if user_input is not None:
+        if user_input is not None and "choice" in user_input:
             if user_input["choice"] == CHOICE_RETRY:
                 return await self.async_step_active_consent()
             return self._create_entry()
@@ -574,7 +579,7 @@ class GoveeOptionsFlow(OptionsFlow, _ProbeRunner):
     async def async_step_probe_fallback(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
-        if user_input is not None:
+        if user_input is not None and "choice" in user_input:
             choice = user_input["choice"]
             if choice == CHOICE_RETRY:
                 return await self.async_step_probe()
@@ -612,8 +617,8 @@ class GoveeOptionsFlow(OptionsFlow, _ProbeRunner):
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
         errors: dict[str, str] = {}
-        if user_input is not None:
-            if user_input.get("consent"):
+        if user_input is not None and "consent" in user_input:
+            if user_input["consent"]:
                 return await self.async_step_active_probe()
             errors["consent"] = "consent_required"
         return self.async_show_form(
@@ -644,7 +649,7 @@ class GoveeOptionsFlow(OptionsFlow, _ProbeRunner):
     async def async_step_active_failed(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
-        if user_input is not None:
+        if user_input is not None and "choice" in user_input:
             if user_input["choice"] == CHOICE_RETRY:
                 return await self.async_step_active_consent()
             return self.async_create_entry(data=dict(self.config_entry.options))

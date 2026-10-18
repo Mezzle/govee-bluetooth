@@ -73,6 +73,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: GoveeConfigEntry) -> boo
     coordinator = GoveeCoordinator(
         hass, entry, device, entry.options.get(CONF_POLL_INTERVAL, DEFAULT_POLL_INTERVAL)
     )
+    coordinator.options_at_setup = dict(entry.options)
     entry.runtime_data = coordinator
 
     # Read the real state once in the background. A BLE connect through a
@@ -96,5 +97,19 @@ async def async_unload_entry(hass: HomeAssistant, entry: GoveeConfigEntry) -> bo
 
 
 async def _async_options_updated(hass: HomeAssistant, entry: GoveeConfigEntry) -> None:
-    """Reload on any change: options, or data learned by a probe / status read."""
+    """Reload when the running device no longer reflects the entry.
+
+    Options changes always reload. A data change only reloads if the device
+    is not already using the stored sub-mode: when the device itself reported
+    it (``_remember_submode``) it has already switched profile in place, and a
+    reload would only cancel the status read that discovered it. A probe run
+    from the options flow updates the data behind the device's back, so that
+    does reload.
+    """
+    coordinator = entry.runtime_data
+    if (
+        dict(entry.options) == coordinator.options_at_setup
+        and entry.data.get(CONF_DETECTED_SUBMODE) == coordinator.device.profile.color_submode
+    ):
+        return
     await hass.config_entries.async_reload(entry.entry_id)
