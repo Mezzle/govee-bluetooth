@@ -218,7 +218,7 @@ async def test_setup_succeeds_when_first_poll_fails(hass: HomeAssistant, bluetoo
 async def test_entity_unavailable_when_not_advertising(
     hass: HomeAssistant, bluetooth_ready, fake_client: FakeGoveeClient
 ) -> None:
-    await setup_entry(hass)
+    entry = await setup_entry(hass)
     assert hass.states.get(ENTITY_ID).state == STATE_ON
     # Bluetooth marks a device unavailable once it has not been seen for a while.
     future = dt_util.utcnow() + timedelta(minutes=16)
@@ -230,7 +230,11 @@ async def test_entity_unavailable_when_not_advertising(
         await hass.async_block_till_done()
     assert hass.states.get(ENTITY_ID).state == STATE_UNAVAILABLE
 
+    # Home Assistant reloads the entry when a previously unavailable device
+    # is rediscovered, so wait for the reloaded entry's first status read.
     inject_advertisement(hass, make_service_info())
+    await hass.async_block_till_done()
+    await entry.runtime_data.initial_refresh
     await hass.async_block_till_done()
     assert hass.states.get(ENTITY_ID).state == STATE_ON
 
@@ -275,3 +279,17 @@ async def test_setup_does_not_wait_for_slow_bluetooth(hass: HomeAssistant, bluet
         # Unload cancels the hanging background read.
         assert await hass.config_entries.async_unload(entry.entry_id)
         await hass.async_block_till_done()
+
+
+async def test_entity_icon_and_brand_assets(
+    hass: HomeAssistant, bluetooth_ready, fake_client: FakeGoveeClient
+) -> None:
+    from pathlib import Path
+
+    from homeassistant.helpers.icon import async_get_icons
+
+    await setup_entry(hass)
+    icons = await async_get_icons(hass, "entity", {DOMAIN})
+    assert icons[DOMAIN]["light"]["strip"]["default"] == "mdi:led-strip-variant"
+    brand = Path(__file__).parents[1] / "custom_components/govee_bluetooth/brand"
+    assert (brand / "icon.png").is_file() and (brand / "icon@2x.png").is_file()

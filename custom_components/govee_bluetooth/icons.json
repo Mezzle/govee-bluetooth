@@ -1,0 +1,9 @@
+{
+  "entity": {
+    "light": {
+      "strip": {
+        "default": "mdi:led-strip-variant"
+      }
+    }
+  }
+}
