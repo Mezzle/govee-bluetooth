@@ -298,3 +298,91 @@ async def test_entity_icon_and_brand_assets(
     assert icons[DOMAIN]["light"]["strip"]["default"] == "mdi:led-strip-variant"
     brand = Path(__file__).parents[1] / "custom_components/govee_bluetooth/brand"
     assert (brand / "icon.png").is_file() and (brand / "icon@2x.png").is_file()
+
+
+RGBIC_ADDRESS = "A4:C1:38:F5:03:EE"
+RGBIC_LOCAL_NAME = "GVH619A_03EE"
+RGBIC_ENTITY_ID = "light.gvh619a_03ee"
+
+
+async def setup_rgbic_entry(hass: HomeAssistant) -> MockConfigEntry:
+    inject_advertisement(hass, make_service_info(address=RGBIC_ADDRESS, name=RGBIC_LOCAL_NAME))
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        unique_id=RGBIC_ADDRESS,
+        title=RGBIC_LOCAL_NAME,
+        data={CONF_ADDRESS: RGBIC_ADDRESS, CONF_NAME: RGBIC_LOCAL_NAME, CONF_MODEL: "H619A"},
+        options={CONF_IDLE_DISCONNECT: 60},
+    )
+    entry.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await entry.runtime_data.initial_refresh
+    await hass.async_block_till_done()
+    return entry
+
+
+async def test_rgbic_profile_round_trips_rgb_and_colour_temperature(
+    hass: HomeAssistant, bluetooth_ready, fake_client: FakeGoveeClient
+) -> None:
+    """An H619A profile sends 0x15 frames and percent brightness, and reads kelvin back."""
+    # The fake answers the mode read as an RGBIC strip in white mode at 2700 K.
+    fake_client.replies[protocol.CMD_MODE] = protocol.build_frame(
+        protocol.CMD_MODE, [protocol.SUBMODE_COLOR_RGBIC, 0x01, 0x0A, 0x8C], frame_type=0xAA
+    )
+    fake_client.replies[protocol.CMD_BRIGHTNESS] = protocol.build_frame(
+        protocol.CMD_BRIGHTNESS, [50], frame_type=0xAA
+    )
+    entry = await setup_rgbic_entry(hass)
+    state = hass.states.get(RGBIC_ENTITY_ID)
+    assert state is not None and state.state == STATE_ON
+    assert state.attributes[ATTR_COLOR_MODE] == "color_temp"
+    assert state.attributes[ATTR_COLOR_TEMP_KELVIN] == 2700
+    assert state.attributes[ATTR_BRIGHTNESS] == 128  # 50 % of 255
+    assert "effect_list" not in state.attributes  # no scene table yet
+
+    fake_client.writes.clear()
+    await hass.services.async_call(
+        LIGHT_DOMAIN,
+        SERVICE_TURN_ON,
+        {ATTR_ENTITY_ID: RGBIC_ENTITY_ID, ATTR_RGB_COLOR: [255, 0, 0], ATTR_BRIGHTNESS: 255},
+        blocking=True,
+    )
+    assert fake_client.commands == [
+        protocol.power_frame(True),
+        bytes.fromhex("33051501ff00000000000000ff7f00000000005d"),
+        bytes.fromhex("3304640000000000000000000000000000000053"),  # 100 %
+    ]
+    state = hass.states.get(RGBIC_ENTITY_ID)
+    assert state.attributes[ATTR_COLOR_MODE] == "rgb"
+    assert state.attributes[ATTR_RGB_COLOR] == (255, 0, 0)
+
+    fake_client.writes.clear()
+    await hass.services.async_call(
+        LIGHT_DOMAIN,
+        SERVICE_TURN_ON,
+        {ATTR_ENTITY_ID: RGBIC_ENTITY_ID, ATTR_COLOR_TEMP_KELVIN: 6500},
+        blocking=True,
+    )
+    frame = fake_client.commands[-1]
+    assert frame[:9] == bytes([0x33, 0x05, 0x15, 0x01, 0xFF, 0xFF, 0xFF, 0x19, 0x64])
+    assert frame[12:14] == bytes([0xFF, 0x7F])
+    state = hass.states.get(RGBIC_ENTITY_ID)
+    assert state.attributes[ATTR_COLOR_MODE] == "color_temp"
+    assert state.attributes[ATTR_COLOR_TEMP_KELVIN] == 6500
+
+    # A colour-mode reply (kelvin 0) carries no RGB, so the optimistic colour
+    # survives the next poll instead of being overwritten with black.
+    fake_client.replies[protocol.CMD_MODE] = protocol.build_frame(
+        protocol.CMD_MODE, [protocol.SUBMODE_COLOR_RGBIC, 0x01, 0x00, 0x00], frame_type=0xAA
+    )
+    await hass.services.async_call(
+        LIGHT_DOMAIN,
+        SERVICE_TURN_ON,
+        {ATTR_ENTITY_ID: RGBIC_ENTITY_ID, ATTR_RGB_COLOR: [0, 255, 0]},
+        blocking=True,
+    )
+    await entry.runtime_data.async_refresh()
+    await hass.async_block_till_done()
+    state = hass.states.get(RGBIC_ENTITY_ID)
+    assert state.attributes[ATTR_COLOR_MODE] == "rgb"
+    assert state.attributes[ATTR_RGB_COLOR] == (0, 255, 0)

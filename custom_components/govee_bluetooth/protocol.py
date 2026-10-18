@@ -28,10 +28,21 @@ SUBMODE_MUSIC = 0x03
 SUBMODE_SCENE = 0x04
 SUBMODE_COLOR_LEGACY = 0x02
 SUBMODE_COLOR_RGBIC = 0x15
+# RGBWW scheme used by bulbs, lamps and newer firmware on some strips:
+# ``33 05 0D R G B <kHi> <kLo> R2 G2 B2`` (kelvin big-endian, zero for RGB).
+SUBMODE_COLOR_RGBWW = 0x0D
 
 # Legacy colour sub-mode ``33 05 02 R G B <whiteFlag> R2 G2 B2``.
 WHITE_FLAG_COLOR = 0x00
 WHITE_FLAG_WHITE = 0x01
+
+# RGBIC colour sub-mode ``33 05 15 <op> ...``. The byte after the sub-mode is
+# an operation selector; ``01`` sets colour / white on the segments in the
+# trailing mask. Segment masks for strips of up to 16 segments are two bytes,
+# little-endian, one bit per segment. 0x7FFF selects all 15 segments of the
+# common strip layout.
+RGBIC_OP_COLOR = 0x01
+RGBIC_ALL_SEGMENTS = (0xFF, 0x7F)
 
 
 def checksum(data: Iterable[int]) -> int:
@@ -100,8 +111,17 @@ def rgb_frame(red: int, green: int, blue: int, submode: int = SUBMODE_COLOR_LEGA
     if submode == SUBMODE_COLOR_LEGACY:
         return build_frame(CMD_MODE, [submode, *rgb, WHITE_FLAG_COLOR])
     if submode == SUBMODE_COLOR_RGBIC:
-        # Whole-strip mask for 15-segment RGBIC strips.
-        return build_frame(CMD_MODE, [submode, 0x01, *rgb, 0, 0, 0, 0, 0, 0xFF, 0x7F])
+        # ``33 05 15 01 R G B 00 00 00 00 00 <mask>``: whole-strip mask for
+        # 15-segment RGBIC strips. Layout per the decompiled Govee Home app
+        # (Brady-Woods/govee-ble-local issue #15, ``Config.Yt`` -> ``Bytes.h``).
+        return build_frame(
+            CMD_MODE, [submode, RGBIC_OP_COLOR, *rgb, 0, 0, 0, 0, 0, *RGBIC_ALL_SEGMENTS]
+        )
+    if submode == SUBMODE_COLOR_RGBWW:
+        # ``33 05 0D R G B 00 00 00 00 00``: kelvin and tint zeroed for a plain
+        # colour (bulblightv3/ble/SubModeColor.getWriteBytes in the decompiled
+        # app). Confirmed on an H6181, firmware 2.03.11.
+        return build_frame(CMD_MODE, [submode, *rgb, 0, 0, 0, 0, 0])
     raise ValueError(f"Unsupported colour sub-mode {submode:#x}")
 
 
@@ -115,6 +135,40 @@ def color_temp_frame(kelvin: int, submode: int = SUBMODE_COLOR_LEGACY) -> bytes:
     tint = kelvin_to_rgb(kelvin)
     if submode == SUBMODE_COLOR_LEGACY:
         return build_frame(CMD_MODE, [submode, 0xFF, 0xFF, 0xFF, WHITE_FLAG_WHITE, *tint])
+    if submode == SUBMODE_COLOR_RGBIC:
+        # ``33 05 15 01 FF FF FF <kHi> <kLo> R G B <mask>``: white point in the
+        # colour slot, kelvin as a big-endian 16-bit value, then the app's
+        # kelvin-derived RGB tint and the segment mask. Layout per the
+        # decompiled Govee Home 7.7.02 app as documented in
+        # Brady-Woods/govee-ble-local (spec/docs/GOVEE_BLE_GATT_PROTOCOL.md
+        # section 4.2 and issue #15, ``Config.Yt`` -> ``Bytes.r`` mode 1). The
+        # app only ever sends whole 100 K steps within 2000-9000 K.
+        if not 0 <= kelvin <= 0xFFFF:
+            raise ValueError("Kelvin must fit in 16 bits")
+        return build_frame(
+            CMD_MODE,
+            [
+                submode,
+                RGBIC_OP_COLOR,
+                0xFF,
+                0xFF,
+                0xFF,
+                (kelvin >> 8) & 0xFF,
+                kelvin & 0xFF,
+                *tint,
+                *RGBIC_ALL_SEGMENTS,
+            ],
+        )
+    if submode == SUBMODE_COLOR_RGBWW:
+        # ``33 05 0D FF FF FF <kHi> <kLo> R G B``: white point, big-endian
+        # kelvin, then the kelvin-derived tint. The app snaps kelvin to 100 K
+        # before its tint lookup (Constant.getTemColorByKelvin), so do the same.
+        # Confirmed on an H6181, firmware 2.03.11: the reply echoes the kelvin.
+        snapped = max(0, min(0xFFFF, round(kelvin / 100) * 100))
+        return build_frame(
+            CMD_MODE,
+            [submode, 0xFF, 0xFF, 0xFF, snapped >> 8, snapped & 0xFF, *kelvin_to_rgb(snapped)],
+        )
     raise ValueError(f"Colour temperature is not supported on sub-mode {submode:#x}")
 
 
@@ -162,6 +216,7 @@ class ModeReport:
     submode: int
     rgb: tuple[int, int, int] | None = None
     white_tint: tuple[int, int, int] | None = None
+    color_temp_kelvin: int | None = None
     scene_id: int | None = None
 
     @property
@@ -212,7 +267,26 @@ def _parse_mode(payload: bytes) -> ModeReport:
         else:
             report.rgb = rgb
     elif submode == SUBMODE_COLOR_RGBIC:
-        report.rgb = (payload[2], payload[3], payload[4])
+        # ``AA 05 15 <op> <kHi> <kLo>``: unlike the write there is no white
+        # point before the kelvin field, and the reply carries no RGB (the app
+        # reads segment colours through a separate ``AA A5`` walk). A non-zero
+        # kelvin means white mode; zero means a colour the reply cannot tell
+        # us. Source: Brady-Woods/govee-ble-local GOVEE_BLE_GATT_PROTOCOL.md
+        # section 4.2 (``SubModeColorV2.parse`` in the decompiled app).
+        kelvin = (payload[2] << 8) | payload[3]
+        if kelvin:
+            report.color_temp_kelvin = kelvin
+            report.white_tint = kelvin_to_rgb(kelvin)
+            report.rgb = report.white_tint
+    elif submode == SUBMODE_COLOR_RGBWW:
+        # ``AA 05 0D R G B <kHi> <kLo> R2 G2 B2``: mirrors the write body.
+        # Confirmed on an H6181 (fw 2.03.11): kelvin and tint are echoed back.
+        report.rgb = (payload[1], payload[2], payload[3])
+        kelvin = (payload[4] << 8) | payload[5]
+        if kelvin:
+            report.color_temp_kelvin = kelvin
+            tint = (payload[6], payload[7], payload[8])
+            report.white_tint = tint if any(tint) else kelvin_to_rgb(kelvin)
     elif submode == SUBMODE_SCENE:
         report.scene_id = payload[1]
     return report

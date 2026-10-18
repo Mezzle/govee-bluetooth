@@ -78,17 +78,22 @@ Discovered automatically (advertised as `ihoment_`, `Govee_`, `GBK_` or `GVH` + 
 | H6110, H6109, H614A, H614B, H614E | Same app module as the H6159 in the decompiled Govee app. Untested on hardware. |
 | H6127, H6107, H6116, H6161, H6129, H6139, H6141, H6142 | Same legacy colour dialect per the decompiled app and community captures. Untested on hardware. |
 | H6104, H6117, H6125, H6126, H6135, H6137, H6138, H6160, H6163, H6170, H6171, H6172, H6182, H6188, H6195 | Same legacy colour dialect per community captures. Untested on hardware. |
-| H6181 (TV backlight) | Same legacy colour dialect per community captures. Untested on hardware. |
+| H6181 | Verified on hardware (firmware 2.03.11) through an ESPHome proxy: power, brightness, RGB, colour temperature, scenes and read-back. Uses the 0x0D colour scheme and 0-100 brightness, unlike the rest of this table. |
 | H7020, H7021 (outdoor string lights) | Same legacy colour dialect per community captures. Untested on hardware. |
+| H6143, H6144, H619A, H619B, H619C, H619E, H619Z, H61A0, H61A1, H61A2, H61E1 (RGBIC strips) | Segmented `0x15` colour dialect with a whole-strip mask, brightness 0-100, per the decompiled Govee app. Whole-strip colour and white only; no scenes yet. Untested on hardware. |
+| H6199 (RGBIC TV backlight) | Same `0x15` dialect. Untested on hardware. |
+| H6052, H6056, H6059, H6061, H6062, H6065, H6072, H6076 (RGBIC light bars, lamps and panels) | Same `0x15` dialect. Untested on hardware. |
 
 Some H616x and H618x firmware takes brightness as 0-100 rather than 0-255. If
 a strip from that range jumps to full brightness at low slider values, switch the
 **Brightness scale** option to 0-100.
 
+RGBIC models drive every segment the same colour. Per-segment colour, music
+mode and the RGBIC scene tables are not implemented yet.
+
 Any other Govee light can be added manually and will be driven with the H6159
-dialect. RGBIC strips that expect the segmented (`0x15`) colour command will
-switch on and off but ignore colour; open an issue with the model and it can
-be added as a profile.
+dialect. An RGBIC light that is not in the table will switch on and off but
+ignore colour; open an issue with the model and it can be added as a profile.
 
 ## How it talks to the strip
 
@@ -101,10 +106,12 @@ Writes go to characteristic `…2b11`, replies arrive as notifications on `…2b
 | Brightness | `33 04 <level>` |
 | Colour | `33 05 02 R G B 00` |
 | White (colour temperature) | `33 05 02 FF FF FF 01 R G B` with a kelvin-derived tint |
+| Colour (RGBIC) | `33 05 15 01 R G B 00 00 00 00 00 FF 7F`, the trailing bytes being a whole-strip segment mask |
+| White (RGBIC) | `33 05 15 01 FF FF FF <kelvin hi> <kelvin lo> R G B FF 7F` with a kelvin-derived tint |
 | Scene | `33 05 04 <id>` |
 | Keep-alive / power query | `AA 01 00`, answered with `AA 01 <0|1>` |
 | Brightness query | `AA 04 00` |
-| Mode query | `AA 05 01` |
+| Mode query | `AA 05 01`; an RGBIC reply is `AA 05 15 01 <kelvin hi> <kelvin lo>`, kelvin 0 meaning colour mode |
 
 Govee firmware drops a GATT connection that stays silent for about ten
 seconds, so the integration sends the keep-alive every two seconds while a

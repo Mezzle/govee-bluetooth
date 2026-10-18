@@ -14,7 +14,7 @@ from dataclasses import dataclass
 # Advertised local names look like ``ihoment_H6159_1A2B``, ``Govee_H6159_1A2B``,
 # ``GBK_H6159_1A2B`` or ``GVH6159_1A2B``.
 _NAME_RE = re.compile(
-    r"^(?:ihoment_|Govee_|Minger_|GBK_|GVH|GVR)(H[0-9A-F]{4})(?:_|$)", re.IGNORECASE
+    r"^(?:ihoment_|Govee_|Minger_|GBK_|GVH|GVR)(H[0-9A-Z]{4})(?:_|$)", re.IGNORECASE
 )
 
 
@@ -95,20 +95,78 @@ LEGACY_RGB_MODELS: dict[str, str] = {
         ),
         "Govee RGB strip (H6159 family)",
     ),
-    "H6181": "Govee RGB TV backlight (H6159 dialect)",
     "H7020": "Govee outdoor string lights (H6159 dialect)",
     "H7021": "Govee outdoor string lights (H6159 dialect)",
 }
 
+# RGBIC strips, TV backlights, light bars and panels. Colour is the segmented
+# ``33 05 15 01 R G B ... <mask>`` command sent with a whole-strip mask, white is
+# the same frame with a kelvin field, and brightness is a percentage. Scene IDs
+# on these firmwares differ from the legacy table and are left empty until
+# they can be confirmed on hardware. None of these has been verified on
+# hardware yet.
+_RGBIC = ModelProfile(
+    model="H619A",
+    description="Govee RGBIC strip (0x15 colour dialect)",
+    color_submode=0x15,
+    brightness_scale=100,
+    scenes={},
+)
+
+RGBIC_MODELS: dict[str, str] = {
+    **dict.fromkeys(
+        (
+            "H6143",
+            "H6144",
+            "H619A",
+            "H619B",
+            "H619C",
+            "H619E",
+            "H619Z",
+            "H61A0",
+            "H61A1",
+            "H61A2",
+            "H61E1",
+        ),
+        "Govee RGBIC strip (0x15 colour dialect)",
+    ),
+    "H6199": "Govee RGBIC TV backlight (0x15 colour dialect)",
+    **dict.fromkeys(
+        ("H6052", "H6056", "H6059", "H6061", "H6062", "H6065", "H6072", "H6076"),
+        "Govee RGBIC light bar / lamp / panel (0x15 colour dialect)",
+    ),
+}
+
+
+def _family(template: ModelProfile, models: dict[str, str]) -> dict[str, ModelProfile]:
+    return {
+        model: ModelProfile(
+            model=model,
+            description=description,
+            color_submode=template.color_submode,
+            brightness_scale=template.brightness_scale,
+            scenes=template.scenes,
+        )
+        for model, description in models.items()
+    }
+
+
+# Verified on hardware 2026-10-18: an H6181 on firmware 2.03.11 speaks the
+# RGBWW colour scheme (sub-mode 0x0D, kelvin carried in the frame) and takes
+# brightness 0-100, not the legacy 0x02 / 0-255 the decompiled app lists for
+# it. RGB, colour temperature, scenes and read-back all confirmed.
+_RGBWW_TV = ModelProfile(
+    model="H6181",
+    description="Govee RGB TV backlight (0x0D colour scheme)",
+    color_submode=0x0D,
+    brightness_scale=100,
+    scenes=LEGACY_SCENES,
+)
+
 KNOWN_MODELS: dict[str, ModelProfile] = {
-    model: ModelProfile(
-        model=model,
-        description=description,
-        color_submode=_LEGACY_RGB.color_submode,
-        brightness_scale=_LEGACY_RGB.brightness_scale,
-        scenes=_LEGACY_RGB.scenes,
-    )
-    for model, description in LEGACY_RGB_MODELS.items()
+    **_family(_LEGACY_RGB, LEGACY_RGB_MODELS),
+    **_family(_RGBIC, RGBIC_MODELS),
+    "H6181": _RGBWW_TV,
 }
 
 DEFAULT_MODEL = "H6159"
