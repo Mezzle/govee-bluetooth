@@ -66,7 +66,7 @@ Open the integration's **Configure** dialog to tune:
 | --- | --- | --- |
 | Poll interval | 120 s | Each poll opens a brief connection and reads power, brightness and mode. |
 | Keep connection open after a command | 8 s | Consecutive commands (e.g. dragging a slider) reuse the connection. `0` disconnects immediately. |
-| Brightness scale | 0-255 | Confirmed on the H6159: the strip echoes raw values above 100 back unchanged. Some newer firmware uses 0-100. If brightness looks wrong, switch. |
+| Brightness scale | 0-255 | Confirmed on the H6159: the strip echoes raw values above 100 back unchanged. Some newer firmware, including some H616x/H618x units, uses 0-100. If brightness looks wrong, switch. |
 
 ## Supported models
 
@@ -77,6 +77,13 @@ Discovered automatically (advertised as `ihoment_`, `Govee_`, `GBK_` or `GVH` + 
 | H6159 | Verified on hardware (firmware 1.07.02) through an ESPHome Bluetooth proxy: power, brightness, RGB, colour temperature and status read-back. |
 | H6110, H6109, H614A, H614B, H614E | Same app module as the H6159 in the decompiled Govee app. Untested on hardware. |
 | H6127, H6107, H6116, H6161, H6129, H6139, H6141, H6142 | Same legacy colour dialect per the decompiled app and community captures. Untested on hardware. |
+| H6104, H6117, H6125, H6126, H6135, H6137, H6138, H6160, H6163, H6170, H6171, H6172, H6182, H6188, H6195 | Same legacy colour dialect per community captures. Untested on hardware. |
+| H6181 (TV backlight) | Same legacy colour dialect per community captures. Untested on hardware. |
+| H7020, H7021 (outdoor string lights) | Same legacy colour dialect per community captures. Untested on hardware. |
+
+Some H616x and H618x firmware takes brightness as 0-100 rather than 0-255. If
+a strip from that range jumps to full brightness at low slider values, switch the
+**Brightness scale** option to 0-100.
 
 Any other Govee light can be added manually and will be driven with the H6159
 dialect. RGBIC strips that expect the segmented (`0x15`) colour command will
