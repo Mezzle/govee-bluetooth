@@ -35,6 +35,9 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry, async_
 from custom_components.govee_bluetooth import protocol
 from custom_components.govee_bluetooth.const import (
     CONF_ADDRESS,
+    CONF_COLOR_SUBMODE,
+    CONF_DETECTED_SUBMODE,
+    CONF_FIRMWARE,
     CONF_IDLE_DISCONNECT,
     CONF_MODEL,
     CONF_NAME,
@@ -386,3 +389,78 @@ async def test_rgbic_profile_round_trips_rgb_and_colour_temperature(
     state = hass.states.get(RGBIC_ENTITY_ID)
     assert state.attributes[ATTR_COLOR_MODE] == "rgb"
     assert state.attributes[ATTR_RGB_COLOR] == (0, 255, 0)
+
+
+async def test_known_model_firmware_disagreeing_with_table_is_believed(
+    hass: HomeAssistant, bluetooth_ready, caplog
+) -> None:
+    """The H6181 case: table says 0x02 / 0-255, the light answers in 0x0D."""
+    client = FakeGoveeClient(speaks=protocol.SUBMODE_COLOR_RGBWW, brightness=50)
+    client.set_mode(protocol.SUBMODE_COLOR_RGBWW, [1, 2, 3, 0, 0])
+
+    async def _establish(_cls, _device, _name, **_kwargs):
+        client.is_connected = True
+        return client
+
+    with patch(
+        "custom_components.govee_bluetooth.device.establish_connection", side_effect=_establish
+    ):
+        entry = await setup_entry(hass)
+        await hass.async_block_till_done()
+        device = entry.runtime_data.device
+        assert device.profile.color_submode == 0x0D
+        assert device.profile.brightness_scale == 100
+        assert "using the light's value" in caplog.text
+        # Persisted, so the next setup starts from the observed dialect.
+        assert entry.data[CONF_DETECTED_SUBMODE] == 0x0D
+        assert entry.data[CONF_FIRMWARE] == "1.00.17"
+        # Brightness 50 was decoded on the 0-100 scale in the same poll.
+        state = hass.states.get(ENTITY_ID)
+        assert state.attributes[ATTR_BRIGHTNESS] == round(50 * 255 / 100)
+        # And colour commands now go out in 0x0D.
+        client.writes.clear()
+        await hass.services.async_call(
+            LIGHT_DOMAIN,
+            SERVICE_TURN_ON,
+            {ATTR_ENTITY_ID: ENTITY_ID, ATTR_RGB_COLOR: [255, 0, 0]},
+            blocking=True,
+        )
+        assert client.commands[1] == protocol.rgb_frame(255, 0, 0, submode=0x0D)
+
+
+async def test_manual_submode_override_beats_observation(
+    hass: HomeAssistant, bluetooth_ready, caplog
+) -> None:
+    client = FakeGoveeClient(speaks=protocol.SUBMODE_COLOR_RGBWW)
+    client.set_mode(protocol.SUBMODE_COLOR_RGBWW, [1, 2, 3, 0, 0])
+
+    async def _establish(_cls, _device, _name, **_kwargs):
+        client.is_connected = True
+        return client
+
+    with patch(
+        "custom_components.govee_bluetooth.device.establish_connection", side_effect=_establish
+    ):
+        entry = await setup_entry(
+            hass, options={CONF_IDLE_DISCONNECT: 60, CONF_COLOR_SUBMODE: 0x02}
+        )
+        await hass.async_block_till_done()
+    assert entry.runtime_data.device.profile.color_submode == 0x02
+    assert CONF_DETECTED_SUBMODE not in entry.data
+    assert "keeping the override" in caplog.text
+
+
+async def test_diagnostics_show_table_and_observed_submode(
+    hass: HomeAssistant, bluetooth_ready, fake_client: FakeGoveeClient
+) -> None:
+    from custom_components.govee_bluetooth.diagnostics import async_get_config_entry_diagnostics
+
+    entry = await setup_entry(hass)
+    diag = await async_get_config_entry_diagnostics(hass, entry)
+    assert diag["color_submode"] == {
+        "static_table": 0x02,
+        "detected": None,
+        "manual_override": None,
+        "last_observed": 0x02,
+        "in_use": 0x02,
+    }

@@ -10,6 +10,7 @@ from unittest.mock import patch
 import pytest
 from bleak.backends.device import BLEDevice
 from bleak.backends.scanner import AdvertisementData
+from bleak.exc import BleakError
 from habluetooth import get_manager
 from homeassistant.components.bluetooth import BluetoothServiceInfoBleak
 from homeassistant.core import HomeAssistant
@@ -64,11 +65,26 @@ class FakeGoveeClient:
     calling the notification handler, the same way real firmware would.
     """
 
-    def __init__(self, *, power: bool = True, brightness: int = 0x80, rgb=(16, 32, 48)) -> None:
+    def __init__(
+        self,
+        *,
+        power: bool = True,
+        brightness: int = 0x80,
+        rgb=(16, 32, 48),
+        speaks: int | None = protocol.SUBMODE_COLOR_LEGACY,
+        fail_after_writes: int | None = None,
+    ) -> None:
         self.is_connected = True
         self.writes: list[bytes] = []
         self.disconnects = 0
         self._notify: Callable | None = None
+        # The colour sub-mode this firmware understands. A ``33 05 <speaks>``
+        # write updates the mode reply the way real firmware echoes it; writes
+        # in any other sub-mode are ignored, which is what both tested lights
+        # do with frames they do not understand.
+        self.speaks = speaks
+        # Simulate the link dropping after this many command writes.
+        self.fail_after_writes = fail_after_writes
         self.replies: dict[int, bytes] = {
             protocol.CMD_POWER: protocol.build_frame(
                 protocol.CMD_POWER, [int(power)], frame_type=protocol.TYPE_READ
@@ -91,7 +107,15 @@ class FakeGoveeClient:
 
     async def write_gatt_char(self, _uuid: str, data: bytes, response: bool | None = None) -> None:
         frame = bytes(data)
+        if not self.is_connected:
+            raise BleakError("not connected")
         self.writes.append(frame)
+        if frame[0] == protocol.TYPE_WRITE:
+            if self.fail_after_writes is not None and len(self.commands) > self.fail_after_writes:
+                self.is_connected = False
+                raise BleakError("link dropped")
+            if frame[1] == protocol.CMD_MODE and frame[2] == self.speaks:
+                self.set_mode(frame[2], frame[3:6])
         if frame[0] == protocol.TYPE_READ and self._notify is not None:
             reply = self.replies.get(frame[1])
             if reply is not None:
@@ -100,6 +124,12 @@ class FakeGoveeClient:
     async def disconnect(self) -> None:
         self.is_connected = False
         self.disconnects += 1
+
+    def set_mode(self, submode: int, payload: bytes | tuple[int, ...] = ()) -> None:
+        """Change what the ``AA 05`` query reports."""
+        self.replies[protocol.CMD_MODE] = protocol.build_frame(
+            protocol.CMD_MODE, [submode, *payload], frame_type=protocol.TYPE_READ
+        )
 
     @property
     def commands(self) -> list[bytes]:

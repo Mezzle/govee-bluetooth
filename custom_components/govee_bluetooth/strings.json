@@ -17,7 +17,39 @@
         "data": {
           "name": "Name"
         }
+      },
+      "unknown_model": {
+        "title": "Unknown model {model}",
+        "description": "{model} is not in this integration's model table, so the colour command format it expects is unknown. Home Assistant will now connect to {name} and read its firmware version, power, brightness and current mode. Nothing is written to the light in this step. If the light is showing a plain colour, that read answers the question."
+      },
+      "probe_fallback": {
+        "title": "Colour dialect not yet known",
+        "description": "{model} on firmware {firmware} answered the read-only check, but its current mode is {mode}, which does not reveal the colour dialect. {detail}\n\nChoose how to continue. Retrying after putting the light into a plain colour in the Govee app is the safest option.",
+        "data": {
+          "choice": "Next step"
+        }
+      },
+      "active_consent": {
+        "title": "Run the active probe?",
+        "description": "The active probe writes a test colour to {name} ({model}) in each colour dialect this integration knows, then reads the mode back to see which one the light echoes.\n\nBefore you continue:\n\n- The light will change colour briefly.\n- Writes in an unsupported format have not been seen to damage either tested light (H6159, H6181), but this cannot be guaranteed harmless.\n- If the light stops responding, recovery is a power cycle of the light followed by a reload of this integration's config entry.\n\nThe probe never sends scene IDs and never writes brightness above 100. Power, brightness and colour are restored afterwards where the light's state allows it.",
+        "data": {
+          "consent": "I understand the light will change colour and that writes cannot be guaranteed harmless"
+        }
+      },
+      "active_failed": {
+        "title": "Active probe did not find the dialect",
+        "description": "The active probe on {model} tried sub-modes {attempted} without a confirmed echo. {detail}\n\nYou can finish with the default H6159 dialect and change the colour sub-mode under Configure later.",
+        "data": {
+          "choice": "Next step"
+        }
       }
+    },
+    "progress": {
+      "probe": "Reading the current state of {name}. This can take a little while over a Bluetooth proxy.",
+      "active_probe": "Writing test colours to {name} and reading the mode back. The light will change colour briefly."
+    },
+    "error": {
+      "consent_required": "Tick the box to run the active probe, or go back to choose another option."
     },
     "abort": {
       "already_configured": "This light is already set up.",
@@ -31,17 +63,56 @@
     "step": {
       "init": {
         "title": "Govee Bluetooth options",
+        "menu_options": {
+          "settings": "Settings and manual overrides",
+          "probe": "Re-run the read-only dialect check",
+          "active_consent": "Run the active dialect probe (writes to the light)"
+        }
+      },
+      "settings": {
+        "title": "Govee Bluetooth settings",
+        "description": "Colour sub-mode from the model table: {table_submode}. Detected on the light: {detected_submode}. Brightness scale in use: {effective_scale}.",
         "data": {
           "poll_interval": "How often to read state from the light",
           "idle_disconnect": "Keep the Bluetooth connection open after a command for",
-          "brightness_scale": "Brightness scale used by the firmware"
+          "color_submode": "Colour sub-mode override",
+          "brightness_scale": "Brightness scale override"
         },
         "data_description": {
           "poll_interval": "Each poll opens a short Bluetooth connection. Lower values give faster state updates but use proxy connection slots more often.",
           "idle_disconnect": "Holding the connection makes consecutive commands much faster. Use 0 to disconnect immediately after every command.",
-          "brightness_scale": "If brightness only ever looks dim or jumps to full, try the other scale."
+          "color_submode": "Automatic uses the sub-mode reported by the light, falling back to the model table. Set this only if colour commands are ignored and a probe could not settle it.",
+          "brightness_scale": "Automatic derives the scale from the colour dialect (0x02 is 0-255, 0x0D and 0x15 are 0-100). If brightness only ever looks dim or jumps to full, force the other scale."
+        }
+      },
+      "probe_fallback": {
+        "title": "Colour dialect not yet known",
+        "description": "{model} on firmware {firmware} answered the read-only check, but its current mode is {mode}, which does not reveal the colour dialect. {detail}\n\nChoose how to continue. Retrying after putting the light into a plain colour in the Govee app is the safest option.",
+        "data": {
+          "choice": "Next step"
+        }
+      },
+      "active_consent": {
+        "title": "Run the active probe?",
+        "description": "The active probe writes a test colour to {name} ({model}) in each colour dialect this integration knows, then reads the mode back to see which one the light echoes.\n\nBefore you continue:\n\n- The light will change colour briefly.\n- Writes in an unsupported format have not been seen to damage either tested light (H6159, H6181), but this cannot be guaranteed harmless.\n- If the light stops responding, recovery is a power cycle of the light followed by a reload of this integration's config entry.\n\nThe probe never sends scene IDs and never writes brightness above 100. Power, brightness and colour are restored afterwards where the light's state allows it.",
+        "data": {
+          "consent": "I understand the light will change colour and that writes cannot be guaranteed harmless"
+        }
+      },
+      "active_failed": {
+        "title": "Active probe did not find the dialect",
+        "description": "The active probe on {model} tried sub-modes {attempted} without a confirmed echo. {detail}\n\nYou can finish with the default H6159 dialect and change the colour sub-mode under Configure later.",
+        "data": {
+          "choice": "Next step"
         }
       }
+    },
+    "progress": {
+      "probe": "Reading the current state of {name}. This can take a little while over a Bluetooth proxy.",
+      "active_probe": "Writing test colours to {name} and reading the mode back. The light will change colour briefly."
+    },
+    "error": {
+      "consent_required": "Tick the box to run the active probe, or go back to choose another option."
     }
   }
 }

@@ -33,9 +33,9 @@ from bleak_retry_connector import (
 from homeassistant.components import bluetooth
 from homeassistant.core import HomeAssistant, callback
 
-from . import protocol
+from . import probe, protocol
 from .const import CONTROL_CHARACTERISTIC_UUID, STATUS_CHARACTERISTIC_UUID
-from .models import ModelProfile
+from .models import ModelProfile, brightness_scale_for_submode
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -73,6 +73,9 @@ class GoveeBleDevice:
         name: str,
         profile: ModelProfile,
         idle_disconnect: float,
+        *,
+        on_submode_observed: Callable[[int, str | None], None] | None = None,
+        submode_locked: bool = False,
     ) -> None:
         self._hass = hass
         self.address = address.upper()
@@ -80,6 +83,11 @@ class GoveeBleDevice:
         self.profile = profile
         self.idle_disconnect = idle_disconnect
         self.state = GoveeState()
+        # Called when a mode reply names a colour sub-mode the profile did not
+        # expect, after the profile has been switched to it. ``submode_locked``
+        # (a manual override in the options) only logs the disagreement.
+        self._on_submode_observed = on_submode_observed
+        self._submode_locked = submode_locked
 
         self._lock = asyncio.Lock()
         self._in_flight: asyncio.Task[Any] | None = None
@@ -188,6 +196,10 @@ class GoveeBleDevice:
             raise GoveeConnectionError(f"{self.name} did not answer any status query")
 
         changes: dict[str, Any] = {}
+        if firmware is not None and firmware.version:
+            changes["firmware"] = firmware.version
+        if mode is not None and mode.mode is not None:
+            self._apply_observed_submode(mode.mode.submode, changes.get("firmware"))
         if power is not None and power.power is not None:
             changes["is_on"] = power.power
         if brightness is not None and brightness.brightness_level is not None:
@@ -199,10 +211,68 @@ class GoveeBleDevice:
         if brightness is not None and brightness.brightness_level is not None:
             extra = changes.get("extra", self.state.extra)
             changes["extra"] = {**extra, "brightness_raw": brightness.brightness_level}
-        if firmware is not None and firmware.version:
-            changes["firmware"] = firmware.version
         self._set_state(**changes)
         return self.state
+
+    @callback
+    def _apply_observed_submode(self, submode: int, firmware: str | None = None) -> None:
+        """Prefer the colour sub-mode the light reports over the static table.
+
+        Runs on every status read, so a known model whose firmware disagrees
+        with the table (the H6181 case) is corrected on first contact, and a
+        firmware update that changes dialect is picked up on the next poll.
+        """
+        if submode not in probe.COLOR_SUBMODES or submode == self.profile.color_submode:
+            return
+        if self._submode_locked:
+            _LOGGER.warning(
+                "%s reports colour sub-mode %#04x but the options force %#04x; keeping the override",
+                self.name,
+                submode,
+                self.profile.color_submode,
+            )
+            return
+        _LOGGER.warning(
+            "%s reports colour sub-mode %#04x, profile %s expected %#04x; using the light's value",
+            self.name,
+            submode,
+            self.profile.model,
+            self.profile.color_submode,
+        )
+        self.profile = replace(
+            self.profile,
+            color_submode=submode,
+            brightness_scale=brightness_scale_for_submode(submode, self.profile.brightness_scale),
+        )
+        if self._on_submode_observed is not None:
+            self._on_submode_observed(submode, firmware or self.state.firmware)
+
+    # ------------------------------------------------------------------
+    # Dialect probes (see probe.py)
+    # ------------------------------------------------------------------
+
+    async def async_safe_probe(self) -> probe.SafeProbeResult:
+        """Run the read-only probe over this device's connection."""
+        async with self._lock:
+            self._in_flight = asyncio.current_task()
+            client = await self._async_connect()
+            try:
+                return await probe.async_safe_probe(_ProbeLink(self, client))
+            finally:
+                self._touch()
+
+    async def async_active_probe(self, candidates: tuple[int, ...]) -> probe.ActiveProbeResult:
+        """Run the opt-in write-and-echo probe. Holds the lock for the whole sequence."""
+        async with self._lock:
+            self._in_flight = asyncio.current_task()
+            client = await self._async_connect()
+            try:
+                result = await probe.async_active_probe(_ProbeLink(self, client), candidates)
+            finally:
+                self._touch()
+        if result.error is not None:
+            await self.async_disconnect()
+        return result
 
     async def async_disconnect(self) -> None:
         """Drop the connection, even if an operation is stuck mid-connect.
@@ -419,3 +489,29 @@ class GoveeBleDevice:
                     return
         except asyncio.CancelledError:
             raise
+
+
+class _ProbeLink:
+    """Adapt a connected client to :class:`probe.ProbeLink`."""
+
+    def __init__(self, device: GoveeBleDevice, client: BleakClientWithServiceCache) -> None:
+        self._device = device
+        self._client = client
+
+    async def write(self, frame: bytes) -> None:
+        if not self._client.is_connected:
+            raise probe.ProbeConnectionLost("link closed")
+        try:
+            _LOGGER.debug("%s -> %s (probe)", self._device.name, frame.hex())
+            await self._client.write_gatt_char(CONTROL_CHARACTERISTIC_UUID, frame, response=True)
+            await asyncio.sleep(INTER_FRAME_DELAY)
+        except (BleakError, TimeoutError, OSError) as err:
+            raise probe.ProbeConnectionLost(str(err)) from err
+
+    async def query(self, frame: bytes, command: int) -> protocol.Reply | None:
+        if not self._client.is_connected:
+            raise probe.ProbeConnectionLost("link closed")
+        try:
+            return await self._device._async_query(self._client, frame, command)
+        except (BleakError, OSError) as err:
+            raise probe.ProbeConnectionLost(str(err)) from err

@@ -2,12 +2,17 @@
 
 from __future__ import annotations
 
+import logging
+
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
 
 from .const import (
     CONF_ADDRESS,
     CONF_BRIGHTNESS_SCALE,
+    CONF_COLOR_SUBMODE,
+    CONF_DETECTED_SUBMODE,
+    CONF_FIRMWARE,
     CONF_IDLE_DISCONNECT,
     CONF_MODEL,
     CONF_NAME,
@@ -21,23 +26,54 @@ from .coordinator import GoveeCoordinator
 from .device import GoveeBleDevice
 from .models import profile_for
 
+_LOGGER = logging.getLogger(__name__)
+
 type GoveeConfigEntry = ConfigEntry[GoveeCoordinator]
+
+
+def profile_for_entry(entry: ConfigEntry):
+    """Effective profile: manual override > detected on the light > static table."""
+    return profile_for(
+        entry.data.get(CONF_MODEL),
+        brightness_scale=entry.options.get(CONF_BRIGHTNESS_SCALE) or None,
+        detected_submode=entry.data.get(CONF_DETECTED_SUBMODE),
+        color_submode=entry.options.get(CONF_COLOR_SUBMODE) or None,
+    )
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: GoveeConfigEntry) -> bool:
     """Set up one Govee light from a config entry."""
     address: str = entry.data[CONF_ADDRESS]
-    profile = profile_for(entry.data.get(CONF_MODEL), entry.options.get(CONF_BRIGHTNESS_SCALE))
+    profile = profile_for_entry(entry)
+
+    @callback
+    def _remember_submode(submode: int, firmware: str | None) -> None:
+        """Persist what the light reported so the next setup starts from it."""
+        data = {**entry.data, CONF_DETECTED_SUBMODE: submode}
+        if firmware:
+            data[CONF_FIRMWARE] = firmware
+        if data != dict(entry.data):
+            _LOGGER.info(
+                "%s: storing detected colour sub-mode %#04x (firmware %s)",
+                entry.title,
+                submode,
+                firmware or "unknown",
+            )
+            hass.config_entries.async_update_entry(entry, data=data)
+
     device = GoveeBleDevice(
         hass,
         address,
         entry.data.get(CONF_NAME) or entry.title,
         profile,
         idle_disconnect=entry.options.get(CONF_IDLE_DISCONNECT, DEFAULT_IDLE_DISCONNECT),
+        on_submode_observed=_remember_submode,
+        submode_locked=bool(entry.options.get(CONF_COLOR_SUBMODE)),
     )
     coordinator = GoveeCoordinator(
         hass, entry, device, entry.options.get(CONF_POLL_INTERVAL, DEFAULT_POLL_INTERVAL)
     )
+    coordinator.options_at_setup = dict(entry.options)
     entry.runtime_data = coordinator
 
     # Read the real state once in the background. A BLE connect through a
@@ -61,4 +97,19 @@ async def async_unload_entry(hass: HomeAssistant, entry: GoveeConfigEntry) -> bo
 
 
 async def _async_options_updated(hass: HomeAssistant, entry: GoveeConfigEntry) -> None:
+    """Reload when the running device no longer reflects the entry.
+
+    Options changes always reload. A data change only reloads if the device
+    is not already using the stored sub-mode: when the device itself reported
+    it (``_remember_submode``) it has already switched profile in place, and a
+    reload would only cancel the status read that discovered it. A probe run
+    from the options flow updates the data behind the device's back, so that
+    does reload.
+    """
+    coordinator = entry.runtime_data
+    if (
+        dict(entry.options) == coordinator.options_at_setup
+        and entry.data.get(CONF_DETECTED_SUBMODE) == coordinator.device.profile.color_submode
+    ):
+        return
     await hass.config_entries.async_reload(entry.entry_id)
