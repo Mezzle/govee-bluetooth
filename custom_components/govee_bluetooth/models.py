@@ -56,30 +56,59 @@ _LEGACY_RGB = ModelProfile(
     scenes=LEGACY_SCENES,
 )
 
+# Every model that speaks the legacy dialect, grouped by form factor. Only the
+# H6159 has been exercised on hardware; the rest are listed on the strength of
+# the decompiled Govee app and community packet captures. The manifest's
+# ``bluetooth`` matchers must list exactly these models (see tests/test_models.py).
+LEGACY_RGB_MODELS: dict[str, str] = {
+    **dict.fromkeys(
+        (
+            "H6159",
+            "H6110",
+            "H6109",
+            "H614A",
+            "H614B",
+            "H614E",
+            "H6127",
+            "H6107",
+            "H6116",
+            "H6161",
+            "H6129",
+            "H6139",
+            "H6141",
+            "H6142",
+            "H6104",
+            "H6117",
+            "H6125",
+            "H6126",
+            "H6135",
+            "H6137",
+            "H6138",
+            "H6160",
+            "H6163",
+            "H6170",
+            "H6171",
+            "H6172",
+            "H6182",
+            "H6188",
+            "H6195",
+        ),
+        "Govee RGB strip (H6159 family)",
+    ),
+    "H6181": "Govee RGB TV backlight (H6159 dialect)",
+    "H7020": "Govee outdoor string lights (H6159 dialect)",
+    "H7021": "Govee outdoor string lights (H6159 dialect)",
+}
+
 KNOWN_MODELS: dict[str, ModelProfile] = {
     model: ModelProfile(
         model=model,
-        description=_LEGACY_RGB.description,
+        description=description,
         color_submode=_LEGACY_RGB.color_submode,
         brightness_scale=_LEGACY_RGB.brightness_scale,
         scenes=_LEGACY_RGB.scenes,
     )
-    for model in (
-        "H6159",
-        "H6110",
-        "H6109",
-        "H614A",
-        "H614B",
-        "H614E",
-        "H6127",
-        "H6107",
-        "H6116",
-        "H6161",
-        "H6129",
-        "H6139",
-        "H6141",
-        "H6142",
-    )
+    for model, description in LEGACY_RGB_MODELS.items()
 }
 
 DEFAULT_MODEL = "H6159"
