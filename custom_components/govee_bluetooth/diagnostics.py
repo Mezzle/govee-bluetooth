@@ -6,10 +6,24 @@ from dataclasses import asdict
 from typing import Any
 
 from homeassistant.components import bluetooth
-from homeassistant.components.bluetooth import BluetoothReachabilityIntent
 from homeassistant.core import HomeAssistant
 
 from . import GoveeConfigEntry
+
+
+def _reachability(hass: HomeAssistant, address: str) -> str | None:
+    """Home Assistant's own explanation of why an address is (un)reachable.
+
+    The API arrived in 2026; older cores simply omit the field.
+    """
+    try:
+        from homeassistant.components.bluetooth import BluetoothReachabilityIntent
+
+        return bluetooth.async_address_reachability_diagnostics(
+            hass, address, BluetoothReachabilityIntent.CONNECTION
+        )
+    except (ImportError, AttributeError):
+        return None
 
 
 async def async_get_config_entry_diagnostics(
@@ -24,9 +38,7 @@ async def async_get_config_entry_diagnostics(
         "bluetooth": {
             "seen_by_connectable_adapter": coordinator.available,
             "connectable_scanners": bluetooth.async_scanner_count(hass, connectable=True),
-            "reachability": bluetooth.async_address_reachability_diagnostics(
-                hass, device.address, BluetoothReachabilityIntent.CONNECTION
-            ),
+            "reachability": _reachability(hass, device.address),
         },
         "last_update_success": coordinator.last_update_success,
     }

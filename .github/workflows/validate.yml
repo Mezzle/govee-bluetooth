@@ -23,11 +23,18 @@ jobs:
 
   tests:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # 3.13 resolves to the last Home Assistant release that supported it
+        # (early 2026); 3.14 gets the current release.
+        python-version: ["3.13", "3.14"]
+    name: tests (python ${{ matrix.python-version }})
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.13"
+          python-version: ${{ matrix.python-version }}
       - run: pip install -r requirements_test.txt
       - name: Install Home Assistant bluetooth/usb runtime deps at HA's pinned versions
         run: |
