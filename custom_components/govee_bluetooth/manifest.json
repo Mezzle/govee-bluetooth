@@ -1,0 +1,191 @@
+{
+  "domain": "govee_bluetooth",
+  "name": "Govee Bluetooth",
+  "bluetooth": [
+    {
+      "local_name": "ihoment_H6159*"
+    },
+    {
+      "local_name": "Govee_H6159*"
+    },
+    {
+      "local_name": "GBK_H6159*"
+    },
+    {
+      "local_name": "GVHH6159*"
+    },
+    {
+      "local_name": "ihoment_H6110*"
+    },
+    {
+      "local_name": "Govee_H6110*"
+    },
+    {
+      "local_name": "GBK_H6110*"
+    },
+    {
+      "local_name": "GVHH6110*"
+    },
+    {
+      "local_name": "ihoment_H6109*"
+    },
+    {
+      "local_name": "Govee_H6109*"
+    },
+    {
+      "local_name": "GBK_H6109*"
+    },
+    {
+      "local_name": "GVHH6109*"
+    },
+    {
+      "local_name": "ihoment_H614A*"
+    },
+    {
+      "local_name": "Govee_H614A*"
+    },
+    {
+      "local_name": "GBK_H614A*"
+    },
+    {
+      "local_name": "GVHH614A*"
+    },
+    {
+      "local_name": "ihoment_H614B*"
+    },
+    {
+      "local_name": "Govee_H614B*"
+    },
+    {
+      "local_name": "GBK_H614B*"
+    },
+    {
+      "local_name": "GVHH614B*"
+    },
+    {
+      "local_name": "ihoment_H614E*"
+    },
+    {
+      "local_name": "Govee_H614E*"
+    },
+    {
+      "local_name": "GBK_H614E*"
+    },
+    {
+      "local_name": "GVHH614E*"
+    },
+    {
+      "local_name": "ihoment_H6127*"
+    },
+    {
+      "local_name": "Govee_H6127*"
+    },
+    {
+      "local_name": "GBK_H6127*"
+    },
+    {
+      "local_name": "GVHH6127*"
+    },
+    {
+      "local_name": "ihoment_H6107*"
+    },
+    {
+      "local_name": "Govee_H6107*"
+    },
+    {
+      "local_name": "GBK_H6107*"
+    },
+    {
+      "local_name": "GVHH6107*"
+    },
+    {
+      "local_name": "ihoment_H6116*"
+    },
+    {
+      "local_name": "Govee_H6116*"
+    },
+    {
+      "local_name": "GBK_H6116*"
+    },
+    {
+      "local_name": "GVHH6116*"
+    },
+    {
+      "local_name": "ihoment_H6161*"
+    },
+    {
+      "local_name": "Govee_H6161*"
+    },
+    {
+      "local_name": "GBK_H6161*"
+    },
+    {
+      "local_name": "GVHH6161*"
+    },
+    {
+      "local_name": "ihoment_H6129*"
+    },
+    {
+      "local_name": "Govee_H6129*"
+    },
+    {
+      "local_name": "GBK_H6129*"
+    },
+    {
+      "local_name": "GVHH6129*"
+    },
+    {
+      "local_name": "ihoment_H6139*"
+    },
+    {
+      "local_name": "Govee_H6139*"
+    },
+    {
+      "local_name": "GBK_H6139*"
+    },
+    {
+      "local_name": "GVHH6139*"
+    },
+    {
+      "local_name": "ihoment_H6141*"
+    },
+    {
+      "local_name": "Govee_H6141*"
+    },
+    {
+      "local_name": "GBK_H6141*"
+    },
+    {
+      "local_name": "GVHH6141*"
+    },
+    {
+      "local_name": "ihoment_H6142*"
+    },
+    {
+      "local_name": "Govee_H6142*"
+    },
+    {
+      "local_name": "GBK_H6142*"
+    },
+    {
+      "local_name": "GVHH6142*"
+    }
+  ],
+  "codeowners": [
+    "@mezzle"
+  ],
+  "config_flow": true,
+  "dependencies": [
+    "bluetooth_adapters"
+  ],
+  "documentation": "https://github.com/mezzle/govee-bluetooth",
+  "integration_type": "device",
+  "iot_class": "local_polling",
+  "issue_tracker": "https://github.com/mezzle/govee-bluetooth/issues",
+  "loggers": [
+    "custom_components.govee_bluetooth",
+    "bleak_retry_connector"
+  ],
+  "requirements": [],
+  "version": "0.1.0"
+}

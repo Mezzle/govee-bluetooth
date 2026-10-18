@@ -1,0 +1,47 @@
+{
+  "config": {
+    "flow_title": "{name}",
+    "step": {
+      "user": {
+        "title": "Add a Govee light over Bluetooth",
+        "description": "Lights currently seen by a Home Assistant Bluetooth adapter or proxy. Leave model blank to use the one in the advertised name.",
+        "data": {
+          "address": "Device",
+          "name": "Name",
+          "model": "Model (e.g. H6159)"
+        }
+      },
+      "bluetooth_confirm": {
+        "title": "Add {name}",
+        "description": "Set up {name} ({address}) as a {model} controlled over Bluetooth?",
+        "data": {
+          "name": "Name"
+        }
+      }
+    },
+    "abort": {
+      "already_configured": "This light is already set up.",
+      "already_in_progress": "Setup for this light is already in progress.",
+      "not_connectable": "The adapter that saw this light cannot make connections. Add a connectable adapter or an ESPHome Bluetooth proxy with active connections enabled.",
+      "no_devices_found": "No unconfigured Govee lights are currently visible over Bluetooth.",
+      "no_scanners": "No Bluetooth adapter or proxy capable of connecting is available."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Govee Bluetooth options",
+        "data": {
+          "poll_interval": "How often to read state from the light",
+          "idle_disconnect": "Keep the Bluetooth connection open after a command for",
+          "brightness_scale": "Brightness scale used by the firmware"
+        },
+        "data_description": {
+          "poll_interval": "Each poll opens a short Bluetooth connection. Lower values give faster state updates but use proxy connection slots more often.",
+          "idle_disconnect": "Holding the connection makes consecutive commands much faster. Use 0 to disconnect immediately after every command.",
+          "brightness_scale": "If brightness only ever looks dim or jumps to full, try the other scale."
+        }
+      }
+    }
+  }
+}
