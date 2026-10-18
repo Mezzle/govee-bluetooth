@@ -1,3 +1,4 @@
 homeassistant
 pytest-homeassistant-custom-component
+pytest-timeout
 ruff

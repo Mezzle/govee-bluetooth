@@ -129,6 +129,8 @@ decompiled-app protocol reference in Brady-Woods/govee-ble-local.
 
 ```bash
 python -m venv .venv && .venv/bin/pip install -r requirements_test.txt
+constraints="$(.venv/bin/python -c 'import homeassistant, pathlib; print(pathlib.Path(homeassistant.__file__).parent / "package_constraints.txt")')"
+.venv/bin/pip install -c "$constraints" -r requirements_test_bluetooth.txt
 .venv/bin/pytest
 .venv/bin/ruff check .
 ```

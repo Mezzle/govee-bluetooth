@@ -1,0 +1,14 @@
+# Runtime deps of Home Assistant's bluetooth and usb integrations, which the
+# tests load but a bare `pip install homeassistant` does not pull in.
+# Installed with `-c` against HA's own package_constraints.txt so versions match.
+aiousbwatcher
+bleak
+bleak-retry-connector
+bluetooth-adapters
+bluetooth-auto-recovery
+bluetooth-data-tools
+dbus-fast
+habluetooth
+pyserial
+pyudev
+serialx

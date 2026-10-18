@@ -29,5 +29,10 @@ jobs:
         with:
           python-version: "3.13"
       - run: pip install -r requirements_test.txt
+      - name: Install Home Assistant bluetooth/usb runtime deps at HA's pinned versions
+        run: |
+          constraints="$(python -c 'import homeassistant, pathlib; print(pathlib.Path(homeassistant.__file__).parent / "package_constraints.txt")')"
+          pip install -c "$constraints" -r requirements_test_bluetooth.txt
       - run: ruff check .
-      - run: pytest -q
+      - run: ruff format --check .
+      - run: pytest -q --timeout=60
