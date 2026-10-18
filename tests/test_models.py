@@ -39,7 +39,7 @@ def test_every_matcher_refers_to_a_known_model() -> None:
 
 
 def test_tier1_models_use_legacy_dialect() -> None:
-    for model in ("H6181", "H7020", "H7021", "H6104", "H6195"):
+    for model in ("H7020", "H7021", "H6104", "H6195"):
         profile = KNOWN_MODELS[model]
         assert profile.color_submode == 0x02
         assert profile.brightness_scale == 255
@@ -73,3 +73,10 @@ def test_every_model_is_discoverable_by_name() -> None:
     for model in KNOWN_MODELS:
         assert model_from_name(f"ihoment_{model}_1A2B") == model
         assert model_from_name(f"GVH{model}_1A2B") == model
+
+
+def test_h6181_uses_rgbww_scheme() -> None:
+    profile = KNOWN_MODELS["H6181"]
+    assert profile.color_submode == protocol.SUBMODE_COLOR_RGBWW
+    assert profile.brightness_scale == 100
+    assert profile.supports_scenes

@@ -28,6 +28,9 @@ SUBMODE_MUSIC = 0x03
 SUBMODE_SCENE = 0x04
 SUBMODE_COLOR_LEGACY = 0x02
 SUBMODE_COLOR_RGBIC = 0x15
+# RGBWW scheme used by bulbs, lamps and newer firmware on some strips:
+# ``33 05 0D R G B <kHi> <kLo> R2 G2 B2`` (kelvin big-endian, zero for RGB).
+SUBMODE_COLOR_RGBWW = 0x0D
 
 # Legacy colour sub-mode ``33 05 02 R G B <whiteFlag> R2 G2 B2``.
 WHITE_FLAG_COLOR = 0x00
@@ -114,6 +117,11 @@ def rgb_frame(red: int, green: int, blue: int, submode: int = SUBMODE_COLOR_LEGA
         return build_frame(
             CMD_MODE, [submode, RGBIC_OP_COLOR, *rgb, 0, 0, 0, 0, 0, *RGBIC_ALL_SEGMENTS]
         )
+    if submode == SUBMODE_COLOR_RGBWW:
+        # ``33 05 0D R G B 00 00 00 00 00``: kelvin and tint zeroed for a plain
+        # colour (bulblightv3/ble/SubModeColor.getWriteBytes in the decompiled
+        # app). Confirmed on an H6181, firmware 2.03.11.
+        return build_frame(CMD_MODE, [submode, *rgb, 0, 0, 0, 0, 0])
     raise ValueError(f"Unsupported colour sub-mode {submode:#x}")
 
 
@@ -150,6 +158,16 @@ def color_temp_frame(kelvin: int, submode: int = SUBMODE_COLOR_LEGACY) -> bytes:
                 *tint,
                 *RGBIC_ALL_SEGMENTS,
             ],
+        )
+    if submode == SUBMODE_COLOR_RGBWW:
+        # ``33 05 0D FF FF FF <kHi> <kLo> R G B``: white point, big-endian
+        # kelvin, then the kelvin-derived tint. The app snaps kelvin to 100 K
+        # before its tint lookup (Constant.getTemColorByKelvin), so do the same.
+        # Confirmed on an H6181, firmware 2.03.11: the reply echoes the kelvin.
+        snapped = max(0, min(0xFFFF, round(kelvin / 100) * 100))
+        return build_frame(
+            CMD_MODE,
+            [submode, 0xFF, 0xFF, 0xFF, snapped >> 8, snapped & 0xFF, *kelvin_to_rgb(snapped)],
         )
     raise ValueError(f"Colour temperature is not supported on sub-mode {submode:#x}")
 
@@ -260,6 +278,15 @@ def _parse_mode(payload: bytes) -> ModeReport:
             report.color_temp_kelvin = kelvin
             report.white_tint = kelvin_to_rgb(kelvin)
             report.rgb = report.white_tint
+    elif submode == SUBMODE_COLOR_RGBWW:
+        # ``AA 05 0D R G B <kHi> <kLo> R2 G2 B2``: mirrors the write body.
+        # Confirmed on an H6181 (fw 2.03.11): kelvin and tint are echoed back.
+        report.rgb = (payload[1], payload[2], payload[3])
+        kelvin = (payload[4] << 8) | payload[5]
+        if kelvin:
+            report.color_temp_kelvin = kelvin
+            tint = (payload[6], payload[7], payload[8])
+            report.white_tint = tint if any(tint) else kelvin_to_rgb(kelvin)
     elif submode == SUBMODE_SCENE:
         report.scene_id = payload[1]
     return report
