@@ -28,6 +28,7 @@ from homeassistant.const import (
 )
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
+from homeassistant.helpers import entity_registry as er
 from homeassistant.util import dt as dt_util
 from pytest_homeassistant_custom_component.common import MockConfigEntry, async_fire_time_changed
 
@@ -245,7 +246,11 @@ async def test_diagnostics_and_device_registry(
     from custom_components.govee_bluetooth.diagnostics import async_get_config_entry_diagnostics
 
     entry = await setup_entry(hass)
-    device = device_registry.async_get_device_by_identifier((DOMAIN, ADDRESS), entry.entry_id)
+    # Look the device up via the entity so this works on cores before and
+    # after the device registry lookup API changed in 2026.
+    entity_entry = er.async_get(hass).async_get(ENTITY_ID)
+    assert entity_entry is not None and entity_entry.device_id
+    device = device_registry.async_get(entity_entry.device_id)
     assert device is not None
     assert device.manufacturer == "Govee"
     assert device.model == "H6159"
