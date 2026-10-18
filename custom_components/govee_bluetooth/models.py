@@ -187,8 +187,8 @@ def is_govee_name(name: str | None) -> bool:
     return model_from_name(name) is not None
 
 
-def profile_for(model: str | None, brightness_scale: int | None = None) -> ModelProfile:
-    """Return the profile for a model, falling back to the legacy RGB dialect."""
+def table_profile_for(model: str | None) -> ModelProfile:
+    """The static-table profile for a model, before any detected or manual override."""
     base = KNOWN_MODELS.get((model or "").upper(), _LEGACY_RGB)
     if model and model.upper() not in KNOWN_MODELS:
         base = ModelProfile(
@@ -198,12 +198,53 @@ def profile_for(model: str | None, brightness_scale: int | None = None) -> Model
             brightness_scale=base.brightness_scale,
             scenes=base.scenes,
         )
-    if brightness_scale in (100, 255) and brightness_scale != base.brightness_scale:
-        base = ModelProfile(
-            model=base.model,
-            description=base.description,
-            color_submode=base.color_submode,
-            brightness_scale=brightness_scale,
-            scenes=base.scenes,
-        )
     return base
+
+
+def brightness_scale_for_submode(submode: int, fallback: int) -> int:
+    """Prior for the brightness scale given a colour sub-mode (0x02 -> 255, else 100)."""
+    if submode == 0x02:
+        return 255
+    if submode in (0x0D, 0x15):
+        return 100
+    return fallback
+
+
+def profile_for(
+    model: str | None,
+    brightness_scale: int | None = None,
+    detected_submode: int | None = None,
+    color_submode: int | None = None,
+) -> ModelProfile:
+    """Return the effective profile for a model.
+
+    Precedence for the colour sub-mode: the manual ``color_submode`` override,
+    then ``detected_submode`` (what the light itself reported), then the
+    static table. When the sub-mode comes from somewhere other than the table
+    the brightness scale is re-derived from it (0x02 -> 255, 0x0D/0x15 ->
+    100), since the two are only ever distinguished together on hardware. The
+    manual ``brightness_scale`` override wins over all of that.
+    """
+    base = table_profile_for(model)
+    submode = base.color_submode
+    description = base.description
+    if color_submode in (0x02, 0x0D, 0x15):
+        submode = color_submode
+        description = f"Govee {base.model} (colour sub-mode {submode:#04x} set manually)"
+    elif detected_submode in (0x02, 0x0D, 0x15):
+        submode = detected_submode
+        description = f"Govee {base.model} (colour sub-mode {submode:#04x} detected on the light)"
+    scale = base.brightness_scale
+    if submode != base.color_submode:
+        scale = brightness_scale_for_submode(submode, scale)
+    if brightness_scale in (100, 255):
+        scale = brightness_scale
+    if submode == base.color_submode and scale == base.brightness_scale:
+        return base
+    return ModelProfile(
+        model=base.model,
+        description=description,
+        color_submode=submode,
+        brightness_scale=scale,
+        scenes=base.scenes,
+    )

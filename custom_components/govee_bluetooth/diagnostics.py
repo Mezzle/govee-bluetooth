@@ -9,6 +9,8 @@ from homeassistant.components import bluetooth
 from homeassistant.core import HomeAssistant
 
 from . import GoveeConfigEntry
+from .const import CONF_COLOR_SUBMODE, CONF_DETECTED_SUBMODE, CONF_MODEL
+from .models import table_profile_for
 
 
 def _reachability(hass: HomeAssistant, address: str) -> str | None:
@@ -34,6 +36,13 @@ async def async_get_config_entry_diagnostics(
     return {
         "entry": {"data": dict(entry.data), "options": dict(entry.options)},
         "profile": asdict(device.profile),
+        "color_submode": {
+            "static_table": table_profile_for(entry.data.get(CONF_MODEL)).color_submode,
+            "detected": entry.data.get(CONF_DETECTED_SUBMODE),
+            "manual_override": entry.options.get(CONF_COLOR_SUBMODE),
+            "last_observed": device.state.extra.get("submode"),
+            "in_use": device.profile.color_submode,
+        },
         "state": asdict(device.state),
         "bluetooth": {
             "seen_by_connectable_adapter": coordinator.available,
