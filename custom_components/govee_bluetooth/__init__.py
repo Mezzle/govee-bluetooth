@@ -14,6 +14,7 @@ from .const import (
     CONF_POLL_INTERVAL,
     DEFAULT_IDLE_DISCONNECT,
     DEFAULT_POLL_INTERVAL,
+    DOMAIN,
     PLATFORMS,
 )
 from .coordinator import GoveeCoordinator
@@ -39,10 +40,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: GoveeConfigEntry) -> boo
     )
     entry.runtime_data = coordinator
 
-    # Try to read the real state once, but do not block setup if the strip is
-    # busy with the Govee app or briefly out of range; the entity simply starts
-    # with unknown state and the next poll (or command) fills it in.
-    await coordinator.async_refresh()
+    # Read the real state once in the background. A BLE connect through a
+    # proxy can take tens of seconds or fail outright (strip busy with the
+    # Govee app, out of range), and that must never block or cancel setup.
+    # The entity starts with unknown state and fills in when the read lands.
+    coordinator.initial_refresh = entry.async_create_background_task(
+        hass, coordinator.async_refresh(), f"{DOMAIN} first refresh {address}"
+    )
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     entry.async_on_unload(entry.add_update_listener(_async_options_updated))

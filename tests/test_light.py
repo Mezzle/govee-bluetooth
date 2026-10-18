@@ -57,6 +57,7 @@ async def setup_entry(hass: HomeAssistant, options: dict | None = None) -> MockC
     )
     entry.add_to_hass(hass)
     assert await hass.config_entries.async_setup(entry.entry_id)
+    await entry.runtime_data.initial_refresh
     await hass.async_block_till_done()
     return entry
 
@@ -250,3 +251,27 @@ async def test_diagnostics_and_device_registry(
     assert diag["state"]["is_on"] is True
     assert diag["profile"]["brightness_scale"] == 255
     assert diag["bluetooth"]["seen_by_connectable_adapter"] is True
+
+
+async def test_setup_does_not_wait_for_slow_bluetooth(hass: HomeAssistant, bluetooth_ready) -> None:
+    """A connect that hangs must not delay or cancel config entry setup."""
+
+    async def _hang(*_args, **_kwargs):
+        await asyncio.sleep(3600)
+
+    with patch("custom_components.govee_bluetooth.device.establish_connection", side_effect=_hang):
+        inject_advertisement(hass, make_service_info())
+        entry = MockConfigEntry(
+            domain=DOMAIN,
+            unique_id=ADDRESS,
+            title=LOCAL_NAME,
+            data={CONF_ADDRESS: ADDRESS, CONF_NAME: LOCAL_NAME, CONF_MODEL: "H6159"},
+        )
+        entry.add_to_hass(hass)
+        assert await asyncio.wait_for(hass.config_entries.async_setup(entry.entry_id), 5)
+        await hass.async_block_till_done()
+        assert hass.states.get(ENTITY_ID) is not None
+        assert hass.states.get(ENTITY_ID).state == "unknown"
+        # Unload cancels the hanging background read.
+        assert await hass.config_entries.async_unload(entry.entry_id)
+        await hass.async_block_till_done()

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from datetime import timedelta
 
@@ -36,6 +37,7 @@ class GoveeCoordinator(DataUpdateCoordinator[GoveeState]):
             update_interval=timedelta(seconds=poll_interval),
         )
         self.device = device
+        self.initial_refresh: asyncio.Task[None] | None = None
         self.ble_seen = bluetooth.async_address_present(hass, device.address, connectable=True)
         self._unsubscribers = [
             device.async_add_listener(self._handle_device_state),

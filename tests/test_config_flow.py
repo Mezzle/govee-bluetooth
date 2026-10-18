@@ -137,6 +137,7 @@ async def test_options_flow(hass: HomeAssistant, bluetooth_ready: None, fake_cli
     )
     entry.add_to_hass(hass)
     assert await hass.config_entries.async_setup(entry.entry_id)
+    await entry.runtime_data.initial_refresh
     await hass.async_block_till_done()
 
     result = await hass.config_entries.options.async_init(entry.entry_id)

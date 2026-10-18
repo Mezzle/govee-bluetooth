@@ -82,6 +82,7 @@ class GoveeBleDevice:
         self.state = GoveeState()
 
         self._lock = asyncio.Lock()
+        self._in_flight: asyncio.Task[Any] | None = None
         self._client: BleakClientWithServiceCache | None = None
         self._expected_disconnect = False
         self._heartbeat_task: asyncio.Task[None] | None = None
@@ -160,6 +161,7 @@ class GoveeBleDevice:
     async def async_update(self) -> GoveeState:
         """Read power, brightness and mode from the light."""
         async with self._lock:
+            self._in_flight = asyncio.current_task()
             client = await self._async_connect()
             try:
                 power = await self._async_query(
@@ -200,8 +202,22 @@ class GoveeBleDevice:
         return self.state
 
     async def async_disconnect(self) -> None:
-        async with self._lock:
+        """Drop the connection, even if an operation is stuck mid-connect.
+
+        Used on unload. A connect through a proxy can hang for a long time,
+        so do not queue behind the lock forever: cancel whatever holds it.
+        """
+        try:
+            await asyncio.wait_for(self._lock.acquire(), timeout=2.0)
+        except TimeoutError:
+            if self._in_flight is not None and not self._in_flight.done():
+                self._in_flight.cancel()
             await self._async_disconnect_locked()
+            return
+        try:
+            await self._async_disconnect_locked()
+        finally:
+            self._lock.release()
 
     # ------------------------------------------------------------------
     # Internals
@@ -271,6 +287,7 @@ class GoveeBleDevice:
         if not frames:
             return
         async with self._lock:
+            self._in_flight = asyncio.current_task()
             client = await self._async_connect()
             try:
                 for index, frame in enumerate(frames):
