@@ -291,6 +291,7 @@ class RigLink:
         self.acks = 0
         self.bad_frames = 0
         self.bgc: bytes | None = None
+        self.write_response = True  # set from the control characteristic's properties on connect
 
     async def __aenter__(self) -> RigLink:
         await self.connect()
@@ -313,7 +314,14 @@ class RigLink:
             await self.client.start_notify(const.STATUS_CHARACTERISTIC_UUID, self._on_notify)
         except BleakError as err:
             print(f"warning: could not subscribe to status notifications: {err}")
-        print(f"connected (mtu {getattr(self.client, 'mtu_size', '?')})", flush=True)
+        control = self.client.services.get_characteristic(const.CONTROL_CHARACTERISTIC_UUID)
+        props = list(control.properties) if control is not None else []
+        self.write_response = protocol.control_write_response(props)
+        print(
+            f"connected (mtu {getattr(self.client, 'mtu_size', '?')}); 2b11 {props or 'not found'}, "
+            f"writing {'with' if self.write_response else 'without'} response",
+            flush=True,
+        )
         await self._read_bgc()
         if self.cipher_version == "v1":
             await self._handshake_v1()
@@ -400,7 +408,9 @@ class RigLink:
         self.log.record("tx", frame, note)
         try:
             await self.client.write_gatt_char(
-                const.CONTROL_CHARACTERISTIC_UUID, self._wrap(frame), response=self.session is None
+                const.CONTROL_CHARACTERISTIC_UUID,
+                self._wrap(frame),
+                response=self.write_response and self.session is None,
             )
             await asyncio.sleep(INTER_FRAME_DELAY)
         except (BleakError, TimeoutError, OSError) as err:
@@ -417,7 +427,9 @@ class RigLink:
         try:
             self.log.record("tx", frame, note)
             await self.client.write_gatt_char(
-                const.CONTROL_CHARACTERISTIC_UUID, self._wrap(frame), response=self.session is None
+                const.CONTROL_CHARACTERISTIC_UUID,
+                self._wrap(frame),
+                response=self.write_response and self.session is None,
             )
             return await asyncio.wait_for(future, QUERY_TIMEOUT)
         except TimeoutError:
@@ -823,6 +835,16 @@ async def cmd_status(args: argparse.Namespace) -> None:
             await asyncio.sleep(args.hold)
 
 
+def _manufacturer_data(device: Any) -> dict[int, bytes] | None:
+    """Manufacturer data from a BLEDevice found by address (BlueZ keeps it in details["props"])."""
+    if device is None:
+        return None
+    details = getattr(device, "details", None)
+    props = details.get("props") if isinstance(details, dict) else getattr(details, "props", None)
+    mfr = props.get("ManufacturerData") if isinstance(props, dict) else None
+    return mfr if isinstance(mfr, dict) else None
+
+
 async def cmd_census(args: argparse.Namespace) -> None:
     """The shared read battery; one govee-evidence/1 summary line per run."""
     settings = await resolve_settings(args)
@@ -830,12 +852,7 @@ async def cmd_census(args: argparse.Namespace) -> None:
     if not args.no_scan:
         kwargs = {"adapter": args.adapter} if args.adapter else {}
         device = await BleakScanner.find_device_by_address(args.address, timeout=8.0, **kwargs)
-        details = getattr(device, "details", None) if device is not None else None
-        mfr = (
-            getattr(getattr(details, "props", None), "get", lambda *_: None)("ManufacturerData")
-            if details
-            else None
-        )
+        mfr = _manufacturer_data(device)
         if isinstance(mfr, dict):
             adv = advertisement.parse_manufacturer_data({int(k): bytes(v) for k, v in mfr.items()})
         if adv is not None:

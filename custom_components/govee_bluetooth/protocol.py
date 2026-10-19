@@ -58,6 +58,23 @@ RGBIC_OP_COLOR = 0x01
 RGBIC_ALL_SEGMENTS = (0xFF, 0x7F)
 
 
+def control_write_response(properties: Iterable[str] | None) -> bool:
+    """Whether to write the control characteristic with response.
+
+    Most lights expose ``2b11`` as ``write`` + ``write-without-response`` and
+    the app writes with response, which is what the H6159 and H6181 were
+    verified with. The bulblight family (H6004, H6005, H6006) exposes
+    ``write-without-response`` only: a write request is protocol-illegal
+    there, the H6006 answers it with Write Not Permitted and drops the link
+    (bench, 2026-10-19), and the H6004 does the same per egold555's notes.
+    Unknown properties keep the old behaviour.
+    """
+    props = {str(p).lower() for p in (properties or ())}
+    if not props:
+        return True
+    return "write" in props
+
+
 def checksum(data: Iterable[int]) -> int:
     """XOR every byte together (Govee's "BCC")."""
     result = 0

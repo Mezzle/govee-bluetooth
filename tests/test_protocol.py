@@ -264,3 +264,14 @@ def test_secret_frames_are_redacted_but_stay_valid() -> None:
         False,
     )
     assert protocol.redact_frame(protocol.power_frame(True)) == (protocol.power_frame(True), False)
+
+
+def test_control_write_mode_follows_the_characteristic() -> None:
+    # H6159 / H6181 class: both modes offered, the app (and our bench) writes with response.
+    assert protocol.control_write_response(["write", "write-without-response"]) is True
+    # H6006 on the bench, H6004 per egold555: write-without-response only; a request is rejected.
+    assert protocol.control_write_response(["read", "write-without-response"]) is False
+    assert protocol.control_write_response(("Write-Without-Response",)) is False
+    # Unknown: keep the old behaviour.
+    assert protocol.control_write_response(None) is True
+    assert protocol.control_write_response([]) is True
