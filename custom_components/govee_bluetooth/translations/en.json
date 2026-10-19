@@ -31,14 +31,14 @@
       },
       "active_consent": {
         "title": "Run the active probe?",
-        "description": "The active probe writes a test colour to {name} ({model}) in each colour dialect this integration knows, then reads the mode back to see which one the light echoes.\n\nBefore you continue:\n\n- The light will change colour briefly.\n- Writes in an unsupported format have not been seen to damage either tested light (H6159, H6181), but this cannot be guaranteed harmless.\n- If the light stops responding, recovery is a power cycle of the light followed by a reload of this integration's config entry.\n\nThe probe never sends scene IDs and never writes brightness above 100. Power, brightness and colour are restored afterwards where the light's state allows it.",
+        "description": "The active probe writes a test colour to {name} ({model}) in each colour dialect this integration knows, then reads the mode back to see which one the light echoes. For the RGBIC dialect (0x15) the test is a white at a set colour temperature, because that mode's reply carries the temperature but no colour.\n\nBefore you continue:\n\n- The light will change colour briefly.\n- Writes in an unsupported format have not been seen to damage either tested light (H6159, H6181), but this cannot be guaranteed harmless.\n- If the light stops responding, recovery is a power cycle of the light followed by a reload of this integration's config entry.\n\nThe probe never sends scene IDs and never writes brightness above 100. Power, brightness and colour are restored afterwards where the light's state allows it.",
         "data": {
           "consent": "I understand the light will change colour and that writes cannot be guaranteed harmless"
         }
       },
       "active_failed": {
         "title": "Active probe did not find the dialect",
-        "description": "The active probe on {model} tried sub-modes {attempted} without a confirmed echo. {detail}\n\nYou can finish with the default H6159 dialect and change the colour sub-mode under Configure later.",
+        "description": "The active probe on {model} tried sub-modes {attempted} without a confirmed echo. {detail}\n\nYou can finish with the default H6159 dialect and change the colour sub-mode under Configure later. The frames exchanged are in this entry's diagnostics download, which is what to attach to an issue.",
         "data": {
           "choice": "Next step"
         }
@@ -46,7 +46,7 @@
     },
     "progress": {
       "probe": "Reading the current state of {name}. This can take a little while over a Bluetooth proxy.",
-      "active_probe": "Writing test colours to {name} and reading the mode back. The light will change colour briefly."
+      "active_probe": "Writing test colours and a test white to {name} and reading the mode back. The light will change colour briefly."
     },
     "error": {
       "consent_required": "Tick the box to run the active probe, or go back to choose another option."
@@ -94,14 +94,14 @@
       },
       "active_consent": {
         "title": "Run the active probe?",
-        "description": "The active probe writes a test colour to {name} ({model}) in each colour dialect this integration knows, then reads the mode back to see which one the light echoes.\n\nBefore you continue:\n\n- The light will change colour briefly.\n- Writes in an unsupported format have not been seen to damage either tested light (H6159, H6181), but this cannot be guaranteed harmless.\n- If the light stops responding, recovery is a power cycle of the light followed by a reload of this integration's config entry.\n\nThe probe never sends scene IDs and never writes brightness above 100. Power, brightness and colour are restored afterwards where the light's state allows it.",
+        "description": "The active probe writes a test colour to {name} ({model}) in each colour dialect this integration knows, then reads the mode back to see which one the light echoes. For the RGBIC dialect (0x15) the test is a white at a set colour temperature, because that mode's reply carries the temperature but no colour.\n\nBefore you continue:\n\n- The light will change colour briefly.\n- Writes in an unsupported format have not been seen to damage either tested light (H6159, H6181), but this cannot be guaranteed harmless.\n- If the light stops responding, recovery is a power cycle of the light followed by a reload of this integration's config entry.\n\nThe probe never sends scene IDs and never writes brightness above 100. Power, brightness and colour are restored afterwards where the light's state allows it.",
         "data": {
           "consent": "I understand the light will change colour and that writes cannot be guaranteed harmless"
         }
       },
       "active_failed": {
         "title": "Active probe did not find the dialect",
-        "description": "The active probe on {model} tried sub-modes {attempted} without a confirmed echo. {detail}\n\nYou can finish with the default H6159 dialect and change the colour sub-mode under Configure later.",
+        "description": "The active probe on {model} tried sub-modes {attempted} without a confirmed echo. {detail}\n\nYou can finish with the default H6159 dialect and change the colour sub-mode under Configure later. The frames exchanged are in this entry's diagnostics download, which is what to attach to an issue.",
         "data": {
           "choice": "Next step"
         }
@@ -109,7 +109,7 @@
     },
     "progress": {
       "probe": "Reading the current state of {name}. This can take a little while over a Bluetooth proxy.",
-      "active_probe": "Writing test colours to {name} and reading the mode back. The light will change colour briefly."
+      "active_probe": "Writing test colours and a test white to {name} and reading the mode back. The light will change colour briefly."
     },
     "error": {
       "consent_required": "Tick the box to run the active probe, or go back to choose another option."

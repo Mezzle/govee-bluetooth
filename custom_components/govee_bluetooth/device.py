@@ -12,6 +12,9 @@ Design notes
 * Commands and status reads are serialised through one lock. A Home Assistant
   ``light.turn_on`` with power, colour and brightness goes out as one batch on
   one connection.
+* Every frame in either direction is kept in a bounded ring buffer
+  (:attr:`GoveeBleDevice.frames`) so the diagnostics download carries the raw
+  conversation without anyone having to turn on debug logging first.
 """
 
 from __future__ import annotations
@@ -19,8 +22,10 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
+from collections import deque
 from collections.abc import Callable
 from dataclasses import dataclass, field, replace
+from datetime import UTC, datetime
 from typing import Any
 
 from bleak.backends.device import BLEDevice
@@ -43,6 +48,23 @@ HEARTBEAT_INTERVAL = 2.0
 QUERY_TIMEOUT = 2.5
 INTER_FRAME_DELAY = 0.06
 CONNECT_ATTEMPTS = 3
+# Frames kept for diagnostics. Heartbeats go out every two seconds while a
+# connection is open, so this holds a few minutes of an idle link or a great
+# many commands.
+FRAME_LOG_SIZE = 200
+
+
+@dataclass(slots=True)
+class FrameRecord:
+    """One frame as sent or received, for the diagnostics download."""
+
+    at: str  # ISO-8601 UTC, millisecond precision
+    direction: str  # "tx" or "rx"
+    frame: str  # hex
+    note: str  # "command", "query", "probe", "heartbeat", "reply" or "unsolicited"
+
+    def as_dict(self) -> dict[str, str]:
+        return {"at": self.at, "direction": self.direction, "frame": self.frame, "note": self.note}
 
 
 class GoveeConnectionError(Exception):
@@ -99,6 +121,27 @@ class GoveeBleDevice:
         self._pending: dict[int, asyncio.Future[protocol.Reply]] = {}
         self._listeners: list[Callable[[GoveeState], None]] = []
         self._scene_names = {v: k for k, v in profile.scenes.items()}
+        self._frame_log: deque[FrameRecord] = deque(maxlen=FRAME_LOG_SIZE)
+
+    # ------------------------------------------------------------------
+    # Frame log
+    # ------------------------------------------------------------------
+
+    @property
+    def frames(self) -> list[dict[str, str]]:
+        """The most recent frames in both directions, oldest first."""
+        return [record.as_dict() for record in self._frame_log]
+
+    @callback
+    def _record_frame(self, direction: str, frame: bytes, note: str) -> None:
+        self._frame_log.append(
+            FrameRecord(
+                at=datetime.now(UTC).isoformat(timespec="milliseconds"),
+                direction=direction,
+                frame=frame.hex(),
+                note=note,
+            )
+        )
 
     # ------------------------------------------------------------------
     # Listeners
@@ -369,6 +412,7 @@ class GoveeBleDevice:
             try:
                 for index, frame in enumerate(frames):
                     _LOGGER.debug("%s -> %s", self.name, frame.hex())
+                    self._record_frame("tx", frame, "command")
                     await client.write_gatt_char(CONTROL_CHARACTERISTIC_UUID, frame, response=True)
                     if index < len(frames) - 1:
                         await asyncio.sleep(INTER_FRAME_DELAY)
@@ -387,6 +431,7 @@ class GoveeBleDevice:
         self._pending[command] = future
         try:
             _LOGGER.debug("%s -> %s (query)", self.name, frame.hex())
+            self._record_frame("tx", frame, "query")
             await client.write_gatt_char(CONTROL_CHARACTERISTIC_UUID, frame, response=True)
             return await asyncio.wait_for(future, QUERY_TIMEOUT)
         except TimeoutError:
@@ -402,11 +447,14 @@ class GoveeBleDevice:
         _LOGGER.debug("%s <- %s", self.name, frame.hex())
         reply = protocol.parse_reply(frame)
         if reply is None:
+            self._record_frame("rx", frame, "unparsed")
             return
         future = self._pending.get(reply.command)
         if future is not None and not future.done():
+            self._record_frame("rx", frame, "reply")
             future.set_result(reply)
             return
+        self._record_frame("rx", frame, "unsolicited")
         # Unsolicited reply, most likely to a heartbeat: keep power state fresh.
         if reply.power is not None:
             self._set_state(is_on=reply.power)
@@ -481,6 +529,7 @@ class GoveeBleDevice:
                 if self._lock.locked():
                     continue  # a command is in flight, that counts as activity
                 try:
+                    self._record_frame("tx", protocol.heartbeat_frame(), "heartbeat")
                     await client.write_gatt_char(
                         CONTROL_CHARACTERISTIC_UUID, protocol.heartbeat_frame(), response=False
                     )
@@ -503,6 +552,7 @@ class _ProbeLink:
             raise probe.ProbeConnectionLost("link closed")
         try:
             _LOGGER.debug("%s -> %s (probe)", self._device.name, frame.hex())
+            self._device._record_frame("tx", frame, "probe")
             await self._client.write_gatt_char(CONTROL_CHARACTERISTIC_UUID, frame, response=True)
             await asyncio.sleep(INTER_FRAME_DELAY)
         except (BleakError, TimeoutError, OSError) as err:

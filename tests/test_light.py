@@ -263,6 +263,38 @@ async def test_diagnostics_and_device_registry(
     assert diag["state"]["is_on"] is True
     assert diag["profile"]["brightness_scale"] == 255
     assert diag["bluetooth"]["seen_by_connectable_adapter"] is True
+    # The raw conversation so far: the initial poll's four queries and replies.
+    assert [f["note"] for f in diag["frames"] if f["direction"] == "tx"] == ["query"] * 4
+    assert [f["note"] for f in diag["frames"] if f["direction"] == "rx"] == ["reply"] * 4
+    assert protocol.mode_query_frame().hex() in [f["frame"] for f in diag["frames"]]
+    assert all(f["at"].endswith("+00:00") for f in diag["frames"])
+    assert diag["probe_history"] == []
+    assert "probe_history" not in diag["entry"]["data"]
+
+
+async def test_diagnostics_frames_cover_commands_and_are_bounded(
+    hass: HomeAssistant, bluetooth_ready, fake_client: FakeGoveeClient
+) -> None:
+    from custom_components.govee_bluetooth.device import FRAME_LOG_SIZE
+    from custom_components.govee_bluetooth.diagnostics import async_get_config_entry_diagnostics
+
+    entry = await setup_entry(hass)
+    await hass.services.async_call(
+        LIGHT_DOMAIN,
+        SERVICE_TURN_ON,
+        {ATTR_ENTITY_ID: ENTITY_ID, ATTR_RGB_COLOR: (1, 2, 3)},
+        blocking=True,
+    )
+    diag = await async_get_config_entry_diagnostics(hass, entry)
+    commands = [f["frame"] for f in diag["frames"] if f["note"] == "command"]
+    assert commands == [c.hex() for c in fake_client.commands]
+    assert protocol.rgb_frame(1, 2, 3).hex() in commands
+
+    device = entry.runtime_data.device
+    for _ in range(FRAME_LOG_SIZE + 10):
+        device._record_frame("tx", protocol.heartbeat_frame(), "heartbeat")
+    assert len(device.frames) == FRAME_LOG_SIZE
+    assert all(f["note"] == "heartbeat" for f in device.frames)
 
 
 async def test_setup_does_not_wait_for_slow_bluetooth(hass: HomeAssistant, bluetooth_ready) -> None:

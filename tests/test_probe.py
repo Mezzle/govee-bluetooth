@@ -8,10 +8,13 @@ from custom_components.govee_bluetooth import probe, protocol
 from custom_components.govee_bluetooth.probe import (
     ActiveProbeResult,
     ProbeConnectionLost,
+    SafeProbeResult,
     async_active_probe,
     async_safe_probe,
     candidate_order,
     echoes,
+    echoes_kelvin,
+    pick_test_kelvin,
 )
 from custom_components.govee_bluetooth.protocol import ModeReport, Reply
 
@@ -28,7 +31,9 @@ class FakeFirmware:
     ``mode`` is the raw mode reply payload. A colour write in the understood
     sub-mode updates it the way real firmware echoes the write; every other
     write is ignored. ``echo_submode_only`` models firmware that flips the
-    sub-mode byte but reports stale RGB, which the probe must reject.
+    sub-mode byte but reports stale RGB, which the probe must reject. A 0x15
+    firmware echoes the kelvin of a white write and nothing else, as the
+    decompiled app's ``SubModeColorV2.parse`` describes.
     """
 
     def __init__(
@@ -67,6 +72,9 @@ class FakeFirmware:
         elif command == protocol.CMD_MODE and payload[0] == self.speaks:
             if self.echo_submode_only:
                 self.mode = _mode_frame(payload[0], 0xAA, 0xBB, 0xCC)
+            elif payload[0] == protocol.SUBMODE_COLOR_RGBIC:
+                # ``33 05 15 01 FF FF FF kHi kLo ...`` -> ``AA 05 15 01 kHi kLo``
+                self.mode = _mode_frame(payload[0], payload[1], payload[5], payload[6])
             else:
                 self.mode = _mode_frame(payload[0], *payload[1:4])
 
@@ -259,7 +267,100 @@ def test_active_probe_refuses_non_candidates() -> None:
     import asyncio
 
     with pytest.raises(ValueError):
-        asyncio.run(async_active_probe(FakeFirmware(speaks=None, mode=b""), candidates=(0x15,)))
+        asyncio.run(
+            async_active_probe(
+                FakeFirmware(speaks=None, mode=b""), candidates=(protocol.SUBMODE_SCENE,)
+            )
+        )
+
+
+# ---------------------------------------------------------------------------
+# Step 2, the 0x15 (RGBIC) path: a white write confirmed by its kelvin
+# ---------------------------------------------------------------------------
+
+
+async def test_active_probe_detects_rgbic_firmware_via_kelvin_echo() -> None:
+    """An RGBIC strip in a scene ignores 0x02 and 0x0D, then echoes the 0x15 white."""
+    light = FakeFirmware(speaks=0x15, mode=_mode_frame(protocol.SUBMODE_SCENE, 0x04))
+    result = await async_active_probe(light)
+    assert result.detected_submode == 0x15
+    assert result.attempted == [0x02, 0x0D, 0x15]
+    assert result.test_kelvin == probe.TEST_KELVINS[0]
+    assert result.complete
+    # The 0x15 write was a white at the test temperature, whole-strip mask.
+    assert light.mode_writes[-1] == protocol.color_temp_frame(probe.TEST_KELVINS[0], 0x15)
+    # No RGB test colour went out in 0x15 (the probe writes whites there).
+    for frame in light.mode_writes:
+        if frame[2] == 0x15:
+            assert frame[3:7] == bytes([0x01, 0xFF, 0xFF, 0xFF])
+
+
+async def test_active_probe_rgbic_first_when_table_says_so() -> None:
+    light = FakeFirmware(speaks=0x15, mode=_mode_frame(protocol.SUBMODE_SCENE, 0x04))
+    result = await async_active_probe(light, candidates=candidate_order(0x15))
+    assert result.detected_submode == 0x15
+    assert result.attempted == [0x15]
+    assert len(light.mode_writes) == 1
+
+
+async def test_active_probe_rejects_stale_rgbic_kelvin() -> None:
+    """The light already reports 0x15 at the first test kelvin and ignores every write.
+
+    The probe must pick the other test kelvin, and then the stale reply is not
+    an echo.
+    """
+    first = probe.TEST_KELVINS[0]
+    light = FakeFirmware(speaks=None, mode=_mode_frame(0x15, 0x01, first >> 8, first & 0xFF))
+    result = await async_active_probe(light, candidates=(0x15,))
+    assert result.test_kelvin == probe.TEST_KELVINS[1]
+    assert result.detected_submode is None
+    assert result.complete
+
+
+async def test_active_probe_rgbic_kelvin_only_echo_is_not_enough_for_other_dialects() -> None:
+    """A 0x0D light that happens to report the test kelvin does not pass as 0x15."""
+    first = probe.TEST_KELVINS[0]
+    light = FakeFirmware(
+        speaks=None, mode=_mode_frame(0x0D, 255, 255, 255, first >> 8, first & 0xFF, 1, 2, 3)
+    )
+    result = await async_active_probe(light, candidates=(0x15,))
+    assert result.detected_submode is None
+
+
+async def test_active_probe_restores_rgbic_white() -> None:
+    """A 0x15 strip showing 3000 K white is put back to 3000 K afterwards."""
+    light = FakeFirmware(speaks=0x15, mode=_mode_frame(0x15, 0x01, 3000 >> 8, 3000 & 0xFF))
+    result = await async_active_probe(light, candidates=(0x15,))
+    assert result.detected_submode == 0x15
+    assert result.restored
+    assert light.mode_writes[-1] == protocol.color_temp_frame(3000, 0x15)
+    assert protocol.parse_reply(light.mode).mode.color_temp_kelvin == 3000
+
+
+async def test_active_probe_cannot_restore_rgbic_colour_and_says_so() -> None:
+    """A 0x15 reply with kelvin 0 is a colour the reply cannot name."""
+    light = FakeFirmware(speaks=0x15, mode=_mode_frame(0x15, 0x01, 0, 0))
+    result = await async_active_probe(light, candidates=(0x15,))
+    assert result.detected_submode == 0x15
+    assert not result.restored
+    assert "previous colour unknown" in (result.restore_note or "")
+
+
+def test_test_kelvin_avoids_what_the_light_reports() -> None:
+    first, second = probe.TEST_KELVINS
+    assert pick_test_kelvin(SafeProbeResult()) == first
+    assert (
+        pick_test_kelvin(SafeProbeResult(mode=ModeReport(0x15, color_temp_kelvin=first))) == second
+    )
+    assert (
+        pick_test_kelvin(SafeProbeResult(mode=ModeReport(0x15, color_temp_kelvin=second))) == first
+    )
+    assert (
+        pick_test_kelvin(SafeProbeResult(mode=ModeReport(0x0D, color_temp_kelvin=first))) == second
+    )
+    # The app only ever sends whole 100 K steps; so does the probe.
+    assert all(k % 100 == 0 and 2000 <= k <= 9000 for k in probe.TEST_KELVINS)
+    assert first != second
 
 
 # ---------------------------------------------------------------------------
@@ -276,9 +377,23 @@ def test_echo_requires_submode_and_rgb() -> None:
     assert not echoes(None, 0x02, rgb)
 
 
+def test_echo_kelvin_requires_submode_and_kelvin() -> None:
+    assert echoes_kelvin(
+        Reply(protocol.CMD_MODE, mode=ModeReport(0x15, color_temp_kelvin=4300)), 0x15, 4300
+    )
+    assert not echoes_kelvin(
+        Reply(protocol.CMD_MODE, mode=ModeReport(0x15, color_temp_kelvin=4200)), 0x15, 4300
+    )
+    assert not echoes_kelvin(
+        Reply(protocol.CMD_MODE, mode=ModeReport(0x0D, color_temp_kelvin=4300)), 0x15, 4300
+    )
+    assert not echoes_kelvin(Reply(protocol.CMD_MODE, mode=ModeReport(0x15)), 0x15, 4300)
+    assert not echoes_kelvin(None, 0x15, 4300)
+
+
 def test_candidate_order_puts_table_prior_first() -> None:
-    assert candidate_order(0x0D) == (0x0D, 0x02)
-    assert candidate_order(0x02) == (0x02, 0x0D)
-    assert candidate_order(0x15) == probe.ACTIVE_CANDIDATES  # 0x15 is never written
+    assert candidate_order(0x0D) == (0x0D, 0x02, 0x15)
+    assert candidate_order(0x02) == (0x02, 0x0D, 0x15)
+    assert candidate_order(0x15) == (0x15, 0x02, 0x0D)
     assert candidate_order(None) == probe.ACTIVE_CANDIDATES
-    assert 0x15 not in probe.ACTIVE_CANDIDATES
+    assert probe.ACTIVE_CANDIDATES == (0x02, 0x0D, 0x15)
