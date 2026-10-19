@@ -496,3 +496,42 @@ async def test_diagnostics_show_table_and_observed_submode(
         "last_observed": 0x02,
         "in_use": 0x02,
     }
+
+
+async def test_write_without_response_only_control_characteristic(
+    hass: HomeAssistant, bluetooth_ready, fake_client: FakeGoveeClient
+) -> None:
+    """The H6006 offers 2b11 as write-without-response only and drops a write request.
+
+    Bench, 2026-10-19: fw 1.00.38 answered a write request with Write Not
+    Permitted and disconnected. Every write must go out without response.
+    """
+    fake_client.control_properties = ("read", "write-without-response")
+    await setup_entry(hass)
+    state = hass.states.get(ENTITY_ID)
+    assert state is not None and state.state == "on"  # the initial poll's reads went through
+    fake_client.writes.clear()
+    fake_client.write_responses.clear()
+    await hass.services.async_call(
+        LIGHT_DOMAIN,
+        SERVICE_TURN_ON,
+        {ATTR_ENTITY_ID: ENTITY_ID, ATTR_RGB_COLOR: [255, 0, 0]},
+        blocking=True,
+    )
+    assert fake_client.commands[0] == protocol.power_frame(True)
+    assert fake_client.write_responses and not any(fake_client.write_responses)
+
+
+async def test_lights_offering_write_requests_keep_getting_them(
+    hass: HomeAssistant, bluetooth_ready, fake_client: FakeGoveeClient
+) -> None:
+    """H6159 / H6181 were verified with write requests; that stays the default."""
+    await setup_entry(hass)
+    fake_client.write_responses.clear()
+    await hass.services.async_call(
+        LIGHT_DOMAIN,
+        SERVICE_TURN_ON,
+        {ATTR_ENTITY_ID: ENTITY_ID, ATTR_RGB_COLOR: [0, 255, 0]},
+        blocking=True,
+    )
+    assert fake_client.write_responses and all(fake_client.write_responses)
