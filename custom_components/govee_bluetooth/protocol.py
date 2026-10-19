@@ -31,6 +31,11 @@ SUBMODE_COLOR_RGBIC = 0x15
 # RGBWW scheme used by bulbs, lamps and newer firmware on some strips:
 # ``33 05 0D R G B <kHi> <kLo> R2 G2 B2`` (kelvin big-endian, zero for RGB).
 SUBMODE_COLOR_RGBWW = 0x0D
+# "Dreamcolor" RGBIC scheme the decompiled app lists as the primary colour
+# sub-mode for the H6168 / H617A / H619A / H61A0 family (``dreamcolorlightv1``),
+# with 0x15 as the alternate: ``33 05 0B R G B <mask0> <mask1>``. No colour
+# temperature path exists on this scheme. Not yet seen on hardware.
+SUBMODE_COLOR_DREAMCOLOR = 0x0B
 
 # Legacy colour sub-mode ``33 05 02 R G B <whiteFlag> R2 G2 B2``.
 WHITE_FLAG_COLOR = 0x00
@@ -122,6 +127,11 @@ def rgb_frame(red: int, green: int, blue: int, submode: int = SUBMODE_COLOR_LEGA
         # colour (bulblightv3/ble/SubModeColor.getWriteBytes in the decompiled
         # app). Confirmed on an H6181, firmware 2.03.11.
         return build_frame(CMD_MODE, [submode, *rgb, 0, 0, 0, 0, 0])
+    if submode == SUBMODE_COLOR_DREAMCOLOR:
+        # ``33 05 0B R G B <mask0> <mask1>``: whole-strip segment mask inline
+        # after the colour (dreamcolorlightv1/ble/SubModeColor.getWriteBytes,
+        # GOVEE_BLE_GATT_PROTOCOL.md section 16.1). Unverified on hardware.
+        return build_frame(CMD_MODE, [submode, *rgb, *RGBIC_ALL_SEGMENTS])
     raise ValueError(f"Unsupported colour sub-mode {submode:#x}")
 
 
@@ -287,6 +297,12 @@ def _parse_mode(payload: bytes) -> ModeReport:
             report.color_temp_kelvin = kelvin
             tint = (payload[6], payload[7], payload[8])
             report.white_tint = tint if any(tint) else kelvin_to_rgb(kelvin)
+    elif submode == SUBMODE_COLOR_DREAMCOLOR:
+        # The app's reader for a 0x0B reply is ``[gradual, kHi, kLo]`` with no
+        # RGB (docs/govee-ble-protocol.md section 6.2); RGB comes from the
+        # ``AA A2`` / ``AA A5`` segment reads instead. Only the sub-mode byte
+        # is trusted here until a dreamcolor light is read back on the bench.
+        pass
     elif submode == SUBMODE_SCENE:
         report.scene_id = payload[1]
     return report

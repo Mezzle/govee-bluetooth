@@ -53,9 +53,9 @@ def test_rgbic_white_frame_layout() -> None:
 
 def test_colour_temperature_rejects_unknown_submode() -> None:
     with pytest.raises(ValueError):
-        protocol.color_temp_frame(2700, submode=0x0B)
+        protocol.color_temp_frame(2700, submode=0x0C)
     with pytest.raises(ValueError):
-        protocol.rgb_frame(1, 2, 3, submode=0x0B)
+        protocol.rgb_frame(1, 2, 3, submode=0x0C)
 
 
 def test_white_frame_sets_flag_and_tint() -> None:
@@ -172,3 +172,21 @@ def test_parse_rgbww_mode_reply() -> None:
     )
     reply = protocol.parse_reply(body + bytes([protocol.checksum(body)]))
     assert reply.mode.color_temp_kelvin == 2700 and reply.mode.white_tint == (0xFF, 0xA9, 0x5D)
+
+
+def test_dreamcolor_colour_frame_layout() -> None:
+    frame = protocol.rgb_frame(0x12, 0x34, 0x56, submode=protocol.SUBMODE_COLOR_DREAMCOLOR)
+    assert frame[:8] == bytes([0x33, 0x05, 0x0B, 0x12, 0x34, 0x56, 0xFF, 0x7F])
+    assert frame[8:19] == bytes(11)
+    assert protocol.verify_frame(frame)
+    with pytest.raises(ValueError):
+        protocol.color_temp_frame(4000, submode=protocol.SUBMODE_COLOR_DREAMCOLOR)
+
+
+def test_dreamcolor_mode_reply_names_submode_only() -> None:
+    # The app reads a 0x0B reply as [gradual, kHi, kLo]; there is no RGB in it.
+    body = bytes([0xAA, 0x05, 0x0B, 0x00, 0x00, 0x00]).ljust(19, b"\x00")
+    reply = protocol.parse_reply(body + bytes([protocol.checksum(body)]))
+    assert reply is not None and reply.mode is not None
+    assert reply.mode.submode == 0x0B
+    assert reply.mode.rgb is None and not reply.mode.is_white

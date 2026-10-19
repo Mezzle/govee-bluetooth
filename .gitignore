@@ -3,3 +3,6 @@ __pycache__/
 .pytest_cache/
 .ruff_cache/
 .venv/
+
+# Bench characterisation records: may hold a light's pairing secret
+bench/
