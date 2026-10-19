@@ -9,11 +9,17 @@ modules are loaded as submodules of a stub package instead (see
 
 Subcommands::
 
-    scan                      list Govee lights with model and table dialect
+    scan                      list Govee lights with model, pact, encryption flag
     status ADDR [--active]    the four status reads (and the active probe)
+    census ADDR [--probe]     the shared read battery; govee-evidence/1 records
     send ADDR CMD...          named or raw frames, every TX/RX printed
     verify ADDR CMD...        send, read back, report whether the light echoed
     shell ADDR                one connection, commands typed interactively
+
+``--log FILE`` writes every frame as JSON lines in the shape the Dance Party
+census and the HA diagnostics use; pairing secrets are redacted unless
+``--keep-secrets``. ``--cipher v1`` runs the AES-ECB+RC4 handshake first
+(experimental; see docs/encrypted-protocol-matrix.md).
 
 Run ``govee_rig.py --help`` or ``govee_rig.py send --help`` for the command
 vocabulary. Python 3.11+, ``pip install bleak``.
@@ -27,7 +33,9 @@ import contextlib
 import importlib
 import json
 import logging
+import platform
 import shlex
+import subprocess
 import sys
 import types
 from collections.abc import Callable, Sequence
@@ -59,8 +67,8 @@ _LOGGER = logging.getLogger("govee_rig")
 # ---------------------------------------------------------------------------
 
 
-def load_integration() -> tuple[Any, Any, Any, Any]:
-    """Return ``(const, protocol, models, probe)`` from the checkout.
+def load_integration() -> tuple[Any, Any, Any, Any, Any, Any, Any]:
+    """Return ``(const, protocol, models, probe, census, advertisement, cipher)`` from the checkout.
 
     Registers ``custom_components`` and ``custom_components.govee_bluetooth``
     as namespace-style stub packages whose ``__path__`` points at the repo, so
@@ -79,11 +87,23 @@ def load_integration() -> tuple[Any, Any, Any, Any]:
             sys.modules[name] = stub
     base = "custom_components.govee_bluetooth."
     return tuple(
-        importlib.import_module(base + m) for m in ("const", "protocol", "models", "probe")
+        importlib.import_module(base + m)
+        for m in ("const", "protocol", "models", "probe", "census", "advertisement", "cipher")
     )
 
 
-const, protocol, models, probe = load_integration()
+const, protocol, models, probe, census, advertisement, cipher = load_integration()
+
+
+def software_version() -> str:
+    try:
+        sha = subprocess.run(
+            ["git", "-C", str(REPO_ROOT), "rev-parse", "--short", "HEAD"],
+            capture_output=True, text=True, check=True, timeout=5,
+        ).stdout.strip()  # fmt: skip
+    except (OSError, subprocess.SubprocessError):
+        sha = "unknown"
+    return f"govee_rig.py {sha}"
 
 
 # ---------------------------------------------------------------------------
@@ -100,6 +120,12 @@ CMD_NAMES = {
     protocol.CMD_BRIGHTNESS: "brightness",
     protocol.CMD_MODE: "mode",
     protocol.CMD_VERSION: "version",
+    protocol.CMD_DEVICE_INFO: "info",
+    protocol.CMD_IC_COUNT: "icnum",
+    protocol.CMD_LIGHT_COUNT: "lightnum",
+    protocol.CMD_SEGMENT_COLORS: "segcolour",
+    protocol.CMD_SECRET_READ: "secret",
+    protocol.CMD_SECRET_WRITE: "secretwrite",
 }
 SUBMODE_ALIASES = {
     "02": protocol.SUBMODE_COLOR_LEGACY,
@@ -152,6 +178,16 @@ def describe_rx(frame: bytes) -> str:
         return f"firmware {reply.version}"
     if reply.mode is not None:
         return "mode " + describe_mode(reply.mode)
+    if reply.hardware is not None:
+        return f"hardware {reply.hardware}"
+    if reply.ic_count is not None:
+        return f"ic {reply.ic_count} segments {reply.segments}"
+    if reply.light_count is not None:
+        return f"lights {reply.light_count}"
+    if reply.secret_present is not None:
+        return "secret " + ("present" if reply.secret_present else "absent")
+    if reply.segment_records is not None:
+        return f"segcolour group {reply.segment_group}, {len(reply.segment_records)} records"
     return f"reply to cmd {reply.command:#04x} (no decoder)"
 
 
@@ -183,27 +219,45 @@ def now_iso() -> str:
 
 @dataclass
 class FrameLog:
-    """Prints every frame and optionally appends JSON lines (HA diagnostics shape)."""
+    """Prints every frame and optionally appends JSON lines (govee-evidence/1 frame records).
+
+    Pairing secrets (``AA B1 01 ...`` replies, ``33 B2`` writes) are zeroed in
+    the written record unless ``keep_secrets``; the console shows them.
+    """
 
     path: Path | None = None
     address: str = ""
     quiet_heartbeat: bool = True
-    records: list[dict[str, str]] = field(default_factory=list)
+    keep_secrets: bool = False
+    records: list[dict[str, Any]] = field(default_factory=list)
 
-    def record(self, direction: str, frame: bytes, note: str) -> None:
-        decoded = describe_tx(frame) if direction == "tx" else describe_rx(frame)
-        entry = {
-            "at": now_iso(),
-            "direction": direction,
-            "frame": hexs(frame),
-            "note": note,
-            "decoded": decoded,
-            "address": self.address,
-        }
+    def write_line(self, entry: dict[str, Any]) -> None:
         self.records.append(entry)
         if self.path is not None:
             with self.path.open("a", encoding="utf-8") as fh:
                 fh.write(json.dumps(entry) + "\n")
+
+    def session(self, **fields: Any) -> None:
+        """A ``{"summary":"session"}`` header so the report knows who gathered what."""
+        self.write_line(
+            {"summary": "session", "schema": census.SCHEMA, "source": "pi", "at": now_iso(),
+             "software": software_version(), "host": platform.node(), **fields}
+        )  # fmt: skip
+
+    def record(self, direction: str, frame: bytes, note: str) -> None:
+        decoded = describe_tx(frame) if direction == "tx" else describe_rx(frame)
+        stored, redacted = (frame, False) if self.keep_secrets else protocol.redact_frame(frame)
+        entry: dict[str, Any] = {
+            "at": now_iso(),
+            "direction": direction,
+            "frame": hexs(stored),
+            "note": note,
+            "decoded": decoded,
+            "address": self.address,
+        }
+        if redacted:
+            entry["redacted"] = True
+        self.write_line(entry)
         if self.quiet_heartbeat and note == "heartbeat":
             return
         stamp = entry["at"][11:23]
@@ -214,15 +268,27 @@ class FrameLog:
 class RigLink:
     """A connected Govee light. Implements probe.ProbeLink."""
 
-    def __init__(self, address: str, log: FrameLog, adapter: str | None = None) -> None:
+    def __init__(
+        self,
+        address: str,
+        log: FrameLog,
+        adapter: str | None = None,
+        cipher_version: str | None = None,
+    ) -> None:
         self.address = address.upper()
         self.log = log
         self.adapter = adapter
+        self.cipher_version = cipher_version
+        self.session: Any = None  # cipher.V1Session once the handshake is done
         self.client: BleakClient | None = None
         self._pending: dict[int, asyncio.Future[Any]] = {}
+        self._pending_request: dict[int, bytes] = {}
         self._heartbeat: asyncio.Task[None] | None = None
         self._busy = asyncio.Lock()
         self.unsolicited: list[Any] = []
+        self.acks = 0
+        self.bad_frames = 0
+        self.bgc: bytes | None = None
 
     async def __aenter__(self) -> RigLink:
         await self.connect()
@@ -246,7 +312,67 @@ class RigLink:
         except BleakError as err:
             print(f"warning: could not subscribe to status notifications: {err}")
         print(f"connected (mtu {getattr(self.client, 'mtu_size', '?')})", flush=True)
+        await self._read_bgc()
+        if self.cipher_version == "v1":
+            await self._handshake_v1()
         self._heartbeat = asyncio.create_task(self._heartbeat_loop())
+
+    async def _read_bgc(self) -> None:
+        """The BGC-info characteristic (2b12): where the app reads encryptVersion."""
+        assert self.client is not None
+        if self.client.services.get_characteristic(cipher.BGC_CHARACTERISTIC_UUID) is None:
+            return
+        try:
+            self.bgc = bytes(await self.client.read_gatt_char(cipher.BGC_CHARACTERISTIC_UUID))
+        except (BleakError, OSError, TimeoutError) as err:
+            print(f"warning: 2b12 read failed: {err}")
+            return
+        version, rule = cipher.bgc_encrypt_version(self.bgc)
+        print(f"2b12 (BGC info): {self.bgc.hex()} -> encryptVersion {version} ({rule})")
+
+    async def _handshake_v1(self) -> None:
+        """AES-ECB+RC4 session: E7 01 under the PSK, then E7 02. Experimental."""
+        assert self.client is not None
+        loop = asyncio.get_running_loop()
+        reply: asyncio.Future[bytes] = loop.create_future()
+        self._raw_hook = lambda data: (not reply.done()) and reply.set_result(data)
+        step1 = cipher.v1_build_step1()
+        self.log.record("tx", step1, "handshake")
+        await self.client.write_gatt_char(const.CONTROL_CHARACTERISTIC_UUID, step1, response=False)
+        try:
+            data = await asyncio.wait_for(reply, QUERY_TIMEOUT)
+        except TimeoutError:
+            self._raw_hook = None
+            raise probe.ProbeConnectionLost("no reply to the E7 01 handshake request") from None
+        key = cipher.v1_parse_session_key(data)
+        self.log.record("rx", bytes(data)[:20], "handshake")
+        if key is None:
+            self._raw_hook = None
+            raise probe.ProbeConnectionLost("E7 01 reply did not decrypt under the PSK")
+        self.session = cipher.V1Session(key)
+        print("cipher v1: session key negotiated (not logged)")
+        ack: asyncio.Future[bytes] = loop.create_future()
+        self._raw_hook = lambda data: (not ack.done()) and ack.set_result(data)
+        step2 = cipher.v1_build_step2()
+        self.log.record("tx", step2, "handshake")
+        await self.client.write_gatt_char(const.CONTROL_CHARACTERISTIC_UUID, step2, response=False)
+        try:
+            data = await asyncio.wait_for(ack, 1.0)
+            print(
+                "cipher v1: E7 02 "
+                + ("acked" if cipher.v1_is_confirm_ack(data) else "answered (not an ack)")
+            )
+        except TimeoutError:
+            print("cipher v1: no E7 02 ack (the H600B capture shows none is required)")
+        self._raw_hook = None
+
+    _raw_hook: Callable[[bytes], Any] | None = None
+
+    def _wrap(self, frame: bytes) -> bytes:
+        return self.session.wrap(frame) if self.session is not None else frame
+
+    def _unwrap(self, data: bytes) -> bytes:
+        return self.session.unwrap(data) if self.session is not None else bytes(data)
 
     async def disconnect(self) -> None:
         if self._heartbeat is not None:
@@ -272,7 +398,7 @@ class RigLink:
         self.log.record("tx", frame, note)
         try:
             await self.client.write_gatt_char(
-                const.CONTROL_CHARACTERISTIC_UUID, frame, response=True
+                const.CONTROL_CHARACTERISTIC_UUID, self._wrap(frame), response=self.session is None
             )
             await asyncio.sleep(INTER_FRAME_DELAY)
         except (BleakError, TimeoutError, OSError) as err:
@@ -285,10 +411,11 @@ class RigLink:
         loop = asyncio.get_running_loop()
         future: asyncio.Future[Any] = loop.create_future()
         self._pending[command] = future
+        self._pending_request[command] = frame
         try:
             self.log.record("tx", frame, note)
             await self.client.write_gatt_char(
-                const.CONTROL_CHARACTERISTIC_UUID, frame, response=True
+                const.CONTROL_CHARACTERISTIC_UUID, self._wrap(frame), response=self.session is None
             )
             return await asyncio.wait_for(future, QUERY_TIMEOUT)
         except TimeoutError:
@@ -301,17 +428,36 @@ class RigLink:
         finally:
             if self._pending.get(command) is future:
                 del self._pending[command]
+                self._pending_request.pop(command, None)
 
     # internals ----------------------------------------------------------
 
     def _on_notify(self, _sender: Any, data: bytearray) -> None:
-        frame = bytes(data)
+        if self._raw_hook is not None:
+            self._raw_hook(bytes(data))
+            return
+        frame = self._unwrap(bytes(data))
+        if len(frame) == protocol.FRAME_LENGTH and frame[0] == protocol.TYPE_WRITE:
+            # The firmware's own acknowledgement of a write: 33 <cmd> with byte 2 == 0.
+            self.log.record("rx", frame, "ack" if frame[2] == 0 else "ack_error")
+            if frame[2] == 0:
+                self.acks += 1
+            return
+        if len(frame) == protocol.FRAME_LENGTH and not protocol.verify_frame(frame):
+            self.log.record("rx", frame, "bad_checksum")
+            self.bad_frames += 1
+            return
         reply = protocol.parse_reply(frame)
         if reply is None:
             self.log.record("rx", frame, "unparsed")
             return
         future = self._pending.get(reply.command)
-        if future is not None and not future.done():
+        request = self._pending_request.get(reply.command)
+        if (
+            future is not None
+            and not future.done()
+            and (request is None or protocol.reply_matches(request, frame))
+        ):
             self.log.record("rx", frame, "reply")
             future.set_result(reply)
             return
@@ -335,7 +481,7 @@ class RigLink:
             self.log.record("tx", frame, "heartbeat")
             try:
                 await self.client.write_gatt_char(
-                    const.CONTROL_CHARACTERISTIC_UUID, frame, response=False
+                    const.CONTROL_CHARACTERISTIC_UUID, self._wrap(frame), response=False
                 )
             except (BleakError, OSError) as err:
                 print(f"heartbeat failed: {err}")
@@ -592,10 +738,12 @@ async def cmd_scan(args: argparse.Namespace) -> None:
     for device, adv in found.values():
         name = adv.local_name or device.name
         model = models.model_from_name(name)
-        govee = model is not None or 0xEC88 in adv.manufacturer_data
+        mfr = advertisement.parse_manufacturer_data(adv.manufacturer_data)
+        govee = model is not None or mfr is not None
         if not govee and not args.all:
             continue
         profile = models.table_profile_for(model) if model else None
+        enc = "?" if mfr is None or mfr.encrypted is None else ("yes" if mfr.encrypted else "no")
         rows.append(
             (
                 device.address,
@@ -603,6 +751,8 @@ async def cmd_scan(args: argparse.Namespace) -> None:
                 model or "-",
                 f"{profile.color_submode:#04x}" if profile else "-",
                 str(profile.brightness_scale) if profile else "-",
+                mfr.pact if mfr else "-",
+                enc,
                 str(adv.rssi),
                 "table" if model and model in models.KNOWN_MODELS else ("default" if model else ""),
             )
@@ -610,13 +760,16 @@ async def cmd_scan(args: argparse.Namespace) -> None:
     if not rows:
         print("no Govee lights seen (is the adapter up? bluetoothctl power on)")
         return
-    rows.sort(key=lambda r: -int(r[5]))
-    header = ("address", "name", "model", "submode", "scale", "rssi", "profile")
+    rows.sort(key=lambda r: -int(r[7]))
+    header = ("address", "name", "model", "submode", "scale", "pact", "enc", "rssi", "profile")
     widths = [max(len(h), *(len(r[i]) for r in rows)) for i, h in enumerate(header)]
     print("  ".join(h.ljust(w) for h, w in zip(header, widths, strict=True)))
     for row in rows:
         print("  ".join(v.ljust(w) for v, w in zip(row, widths, strict=True)))
-    print("\n'default' means the model is not in models.py and the H6159 dialect is assumed.")
+    print(
+        "\n'default' means the model is not in models.py and the H6159 dialect is assumed; "
+        "'enc yes' means the advertisement flags an AES-wrapped link (plaintext frames are ignored)."
+    )
 
 
 def print_safe_result(result: Any) -> None:
@@ -632,8 +785,14 @@ def print_safe_result(result: Any) -> None:
 
 async def cmd_status(args: argparse.Namespace) -> None:
     settings = await resolve_settings(args)
-    log = FrameLog(path=args.log, address=args.address, quiet_heartbeat=not args.show_heartbeat)
-    async with RigLink(args.address, log, args.adapter) as link:
+    log = FrameLog(
+        path=args.log,
+        address=args.address,
+        quiet_heartbeat=not args.show_heartbeat,
+        keep_secrets=args.keep_secrets,
+    )
+    log.session(adapter=args.adapter or "default", command="status", cipher=args.cipher)
+    async with RigLink(args.address, log, args.adapter, args.cipher) as link:
         async with link._busy:
             if args.active:
                 candidates = probe.candidate_order(settings.submode)
@@ -662,14 +821,99 @@ async def cmd_status(args: argparse.Namespace) -> None:
             await asyncio.sleep(args.hold)
 
 
+async def cmd_census(args: argparse.Namespace) -> None:
+    """The shared read battery; one govee-evidence/1 summary line per run."""
+    settings = await resolve_settings(args)
+    adv = None
+    if not args.no_scan:
+        kwargs = {"adapter": args.adapter} if args.adapter else {}
+        device = await BleakScanner.find_device_by_address(args.address, timeout=8.0, **kwargs)
+        details = getattr(device, "details", None) if device is not None else None
+        mfr = (
+            getattr(getattr(details, "props", None), "get", lambda *_: None)("ManufacturerData")
+            if details
+            else None
+        )
+        if isinstance(mfr, dict):
+            adv = advertisement.parse_manufacturer_data({int(k): bytes(v) for k, v in mfr.items()})
+        if adv is not None:
+            print(f"advertisement: pact {adv.pact}, flags {adv.flags}, encrypted {adv.encrypted}")
+    log = FrameLog(
+        path=args.log,
+        address=args.address,
+        quiet_heartbeat=not args.show_heartbeat,
+        keep_secrets=args.keep_secrets,
+    )
+    log.session(
+        adapter=args.adapter or "default",
+        command="census",
+        probe=bool(args.probe),
+        lights=1,
+        cipher=args.cipher,
+    )
+    if adv is not None and adv.encrypted and not args.cipher:
+        print(
+            "the advertisement flags an AES-wrapped link; plaintext reads will be ignored (try --cipher v1 if 2b12 says version 1)"
+        )
+    async with RigLink(args.address, log, args.adapter, args.cipher) as link:
+        async with link._busy:
+            result = await census.async_census(link, probe_writes=bool(args.probe))
+        result.acks = link.acks
+        result.bad_frames = link.bad_frames
+        verdict = census.classify(result, model=settings.model, adv=adv, bgc=link.bgc)
+        record = census.summary_record(
+            result,
+            address=args.address.upper(),
+            name=None,
+            model=settings.model,
+            adv=adv,
+            rssi=None,
+            source="pi",
+            at=now_iso(),
+            software=software_version(),
+            dialect=settings.submode,
+            dialect_source="table" if settings.model in models.KNOWN_MODELS else "default",
+            known_model=settings.model in models.KNOWN_MODELS,
+            include_secret=args.keep_secrets,
+        )
+        if link.bgc is not None:
+            record["bgc"] = link.bgc.hex()
+        log.write_line(record)
+    print("\ncensus result:")
+    for key in ("firmware", "hardware", "power", "brightness", "submode", "submode_name", "ic_count", "segments",
+                "light_count", "secret_present", "segment_page", "reads", "replies", "acks", "bad_frames",
+                "echoed", "restored", "restore_note", "error"):  # fmt: skip
+        if key in record:
+            print(f"  {key:<15}: {record[key]}")
+    print(f"  verdict        : {verdict.family} / {verdict.security} / {verdict.confidence}")
+    for reason in verdict.reasons:
+        print(f"                   - {reason}")
+    if result.secret_present and not args.keep_secrets:
+        print(
+            "  (the AA B1 secret was read; it is not in the log. --keep-secrets keeps it, for a private file)"
+        )
+    if args.log:
+        print(f"\nevidence appended to {args.log}; run tools/govee_report.py on it for the report")
+
+
 async def cmd_send(args: argparse.Namespace, verify: bool) -> None:
     settings = await resolve_settings(args)
     try:
         actions = parse_tokens(args.tokens, settings)
     except ValueError as err:
         sys.exit(f"bad command: {err}\n\n{COMMAND_HELP}")
-    log = FrameLog(path=args.log, address=args.address, quiet_heartbeat=not args.show_heartbeat)
-    async with RigLink(args.address, log, args.adapter) as link:
+    log = FrameLog(
+        path=args.log,
+        address=args.address,
+        quiet_heartbeat=not args.show_heartbeat,
+        keep_secrets=args.keep_secrets,
+    )
+    log.session(
+        adapter=args.adapter or "default",
+        command="verify" if verify else "send",
+        cipher=args.cipher,
+    )
+    async with RigLink(args.address, log, args.adapter, args.cipher) as link:
         verdicts = await run_actions(link, actions, verify)
         if args.hold:
             await asyncio.sleep(args.hold)
@@ -681,11 +925,17 @@ async def cmd_send(args: argparse.Namespace, verify: bool) -> None:
 
 async def cmd_shell(args: argparse.Namespace) -> None:
     settings = await resolve_settings(args)
-    log = FrameLog(path=args.log, address=args.address, quiet_heartbeat=not args.show_heartbeat)
+    log = FrameLog(
+        path=args.log,
+        address=args.address,
+        quiet_heartbeat=not args.show_heartbeat,
+        keep_secrets=args.keep_secrets,
+    )
+    log.session(adapter=args.adapter or "default", command="shell", cipher=args.cipher)
     print(COMMAND_HELP)
     print("extra shell words: verify on|off, quit. Blank line repeats nothing.\n")
     verify = args.verify
-    async with RigLink(args.address, log, args.adapter) as link:
+    async with RigLink(args.address, log, args.adapter, args.cipher) as link:
         while link.connected:
             try:
                 line = await asyncio.to_thread(
@@ -726,6 +976,16 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--adapter", help="BlueZ adapter, e.g. hci0 (default: BlueZ's default)")
     parser.add_argument("--log", type=Path, help="append every TX/RX frame as JSON lines here")
     parser.add_argument("--show-heartbeat", action="store_true", help="print AA 01 heartbeats too")
+    parser.add_argument(
+        "--keep-secrets",
+        action="store_true",
+        help="do not redact AA B1 / 33 B2 payloads in --log (private captures only)",
+    )
+    parser.add_argument(
+        "--cipher",
+        choices=["v1"],
+        help="run the AES-ECB+RC4 handshake and wrap every frame (experimental)",
+    )
     parser.add_argument("-v", "--verbose", action="store_true", help="bleak debug logging")
     sub = parser.add_subparsers(dest="command", required=True)
 
@@ -748,6 +1008,17 @@ def build_parser() -> argparse.ArgumentParser:
         "--active", action="store_true", help="write test colours and look for echoes"
     )
     p_status.add_argument("--candidates", help="active-probe order, e.g. 15,0D,02")
+
+    p_census = sub.add_parser(
+        "census",
+        help="the shared read battery, with an optional probe; writes govee-evidence/1 records",
+    )
+    add_connect_args(p_census)
+    p_census.add_argument(
+        "--probe",
+        action="store_true",
+        help="also write one colour per dialect and restore what can be restored",
+    )
 
     p_send = sub.add_parser(
         "send",
@@ -781,6 +1052,8 @@ def main(argv: Sequence[str] | None = None) -> None:
             asyncio.run(cmd_scan(args))
         elif args.command == "status":
             asyncio.run(cmd_status(args))
+        elif args.command == "census":
+            asyncio.run(cmd_census(args))
         elif args.command == "send":
             asyncio.run(cmd_send(args, verify=False))
         elif args.command == "verify":

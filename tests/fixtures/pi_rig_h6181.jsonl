@@ -1,0 +1,11 @@
+{"at": "2026-10-18T20:01:00.000+00:00", "direction": "tx", "frame": "aa060000000000000000000000000000000000ac", "note": "query", "decoded": "read version", "address": "A4:C1:38:FB:1E:00"}
+{"at": "2026-10-18T20:01:00.120+00:00", "direction": "rx", "frame": "aa06322e30332e3131000000000000000000009d", "note": "reply", "decoded": "firmware 2.03.11", "address": "A4:C1:38:FB:1E:00"}
+{"at": "2026-10-18T20:01:00.200+00:00", "direction": "tx", "frame": "aa010000000000000000000000000000000000ab", "note": "query", "decoded": "read power (heartbeat)", "address": "A4:C1:38:FB:1E:00"}
+{"at": "2026-10-18T20:01:00.300+00:00", "direction": "rx", "frame": "aa010100000000000000000000000000000000aa", "note": "reply", "decoded": "power on", "address": "A4:C1:38:FB:1E:00"}
+{"at": "2026-10-18T20:01:00.400+00:00", "direction": "tx", "frame": "aa050100000000000000000000000000000000ae", "note": "query", "decoded": "read mode", "address": "A4:C1:38:FB:1E:00"}
+{"at": "2026-10-18T20:01:00.500+00:00", "direction": "rx", "frame": "aa050daabbcc000000000000000000000000007f", "note": "reply", "decoded": "mode colour (0x0D, RGBWW dialect), rgb 170 187 204", "address": "A4:C1:38:FB:1E:00"}
+{"at": "2026-10-18T20:01:01.000+00:00", "direction": "tx", "frame": "33050d123456000000000000000000000000004b", "note": "probe", "decoded": "write colour (0x0D, RGBWW dialect)", "address": "A4:C1:38:FB:1E:00"}
+{"at": "2026-10-18T20:01:01.300+00:00", "direction": "tx", "frame": "aa050100000000000000000000000000000000ae", "note": "query", "decoded": "read mode", "address": "A4:C1:38:FB:1E:00"}
+{"at": "2026-10-18T20:01:01.400+00:00", "direction": "rx", "frame": "aa050d12345600000000000000000000000000d2", "note": "reply", "decoded": "mode colour (0x0D, RGBWW dialect), rgb  18  52  86", "address": "A4:C1:38:FB:1E:00"}
+{"at": "2026-10-18T20:01:02.000+00:00", "direction": "tx", "frame": "aab100000000000000000000000000000000001b", "note": "command", "decoded": "read cmd 0xb1", "address": "A4:C1:38:FB:1E:00"}
+{"at": "2026-10-18T20:01:02.100+00:00", "direction": "rx", "frame": "aab101deadbeef0102030400000000000000003c", "note": "unsolicited", "decoded": "reply to cmd 0xb1 (no decoder)", "address": "A4:C1:38:FB:1E:00"}
