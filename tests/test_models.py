@@ -9,7 +9,7 @@ from custom_components.govee_bluetooth import models, protocol
 from custom_components.govee_bluetooth.models import KNOWN_MODELS, model_from_name
 
 MANIFEST = Path(__file__).resolve().parents[1] / "custom_components/govee_bluetooth/manifest.json"
-MATCHER_PREFIXES = ("ihoment_", "Govee_", "GBK_", "GVH")
+MATCHER_PREFIXES = ("ihoment_", "Govee_", "GBK_", "GV")  # GV + H6159 = GVH6159*
 
 
 def _manifest_matchers() -> set[str]:
@@ -72,7 +72,20 @@ def test_every_model_is_discoverable_by_name() -> None:
     # H619Z has a non-hex suffix, which the original name pattern rejected.
     for model in KNOWN_MODELS:
         assert model_from_name(f"ihoment_{model}_1A2B") == model
-        assert model_from_name(f"GVH{model}_1A2B") == model
+        # GV names carry the SKU letter as their third character: GVH6159_1A2B.
+        assert model_from_name(f"GV{model}_1A2B") == model
+
+
+def test_gv_names_follow_the_app_rule() -> None:
+    assert model_from_name("GVH6159_1A2B") == "H6159"
+    assert model_from_name("GVH600B4F5A") == "H600B"  # no separator at all
+    assert model_from_name("gvh617a_abcd") == "H617A"
+    assert model_from_name("GVHH6159_1A2B") is None  # the old, wrong expectation
+    assert model_from_name("GVR6184_1A2B") is None  # a sensor
+    assert model_from_name("GV5122ABCD") is None  # sensor fallback form
+    assert model_from_name("GBK_H6181_FB1E") == "H6181"
+    assert model_from_name("ihoment_H6159") == "H6159"
+    assert model_from_name("ihoment_H6159X1A2B") is None
 
 
 def test_h6181_uses_rgbww_scheme() -> None:

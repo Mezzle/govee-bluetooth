@@ -34,8 +34,10 @@ app on your phone is closed: the light accepts one connection at a time.
 ```sh
 RIG="~/rig/bin/python tools/govee_rig.py"
 
-$RIG scan --seconds 10                     # address, name, model, table dialect, RSSI
+$RIG scan --seconds 10                     # address, name, model, table dialect, pact, encryption flag, RSSI
 $RIG status A4:C1:38:12:34:56              # the four reads, decoded next to the hex
+$RIG --log bench/h617a.jsonl census A4:C1:38:12:34:56          # the shared read battery, evidence records
+$RIG --log bench/h617a.jsonl census A4:C1:38:12:34:56 --probe  # plus one colour per dialect, then restore
 $RIG status A4:C1:38:12:34:56 --active     # write-and-echo probe, same code HA runs
 $RIG status A4:C1:38:12:34:56 --active --candidates 15,0D,02
 $RIG send   A4:C1:38:12:34:56 on rgb 255 0 0 bri 50
@@ -72,13 +74,46 @@ carries kelvin and no RGB; follow it with a `ct` write for a real echo.
 few seconds a reconnect costs between experiments. `verify on` / `verify off`
 toggles read-back, `quit` leaves.
 
+## Census and the compatibility report
+
+`census ADDR` runs the same read battery the Dance Party Flipper app and
+ESP32 image run (power, brightness, firmware, mode, hardware, IC/segment
+count, light count, pairing secret, one segment-colour page), reads the
+`2b12` BGC-info characteristic, and prints a verdict: protocol family,
+session security and a confidence with its reasons. `--probe` adds one
+colour write per dialect (0x02, 0x0B, 0x0D, 0x15), each with its own probe
+colour, and counts a dialect only when its colour shows up where it was not
+showing before; a powered-off light is switched on for the probes and off
+again, and the pre-probe colour is put back when the mode reply carried it.
+With `--log` the run writes `govee-evidence/1` records (see
+`docs/evidence-schema.md`): a session header, every frame, and one summary
+line per light.
+
+`tools/govee_report.py` turns any mix of those logs, Dance Party
+`census.jsonl` files, ESP32 USB logs and Home Assistant diagnostics
+downloads into a Markdown report and a JSON evidence document:
+
+```sh
+python3 tools/govee_report.py bench/*.jsonl census.jsonl --markdown report.md --json evidence.json
+python3 tools/govee_report.py census.jsonl --observe "A4:C1:38:12:34:56=whole strip went dark blue on the 0x15 write;capability=rgb;outcome=worked"
+```
+
+Each device gets a verdict with the sources behind it, a capability table
+(verified / inferred / observed / untested), the reads that failed, and what
+was restored. Evidence from a Flipper session carries the 🪩 Dance Party
+Certified badge: a provenance mark, nothing more.
+
 ## Logging
 
 `--log bench.jsonl` appends every frame in both directions as one JSON object
 per line with `at`, `direction`, `frame`, `note`, `decoded` and `address`.
 The first four keys match the `frames` list in a Home Assistant diagnostics
 download, so the two can be compared directly. Heartbeats are logged but not
-printed unless `--show-heartbeat` is given.
+printed unless `--show-heartbeat` is given. Write acknowledgements the light
+pushes (`33 xx` echoes) are logged as `ack`, corrupt frames as
+`bad_checksum`. Frames carrying the 8-byte pairing secret (`AA B1 01 ...`
+replies, `33 B2` writes) are written with the secret zeroed and
+`"redacted": true`; `--keep-secrets` turns that off for a private capture.
 
 For a full HCI capture, run `btmon` in a second terminal before connecting:
 
@@ -125,6 +160,31 @@ app writes as `33 B2 <8 bytes>` right after every connect. See
 
 Then `send ADDR raw 33 b2 <8 hex bytes> rgb 255 0 0` to test whether the
 secret unlocks writes.
+
+## Encrypted lights (experimental)
+
+A light whose advertisement flags bit 6 or whose `2b12` bytes announce a
+cipher ignores plaintext frames. `--cipher v1` runs the AES-ECB+RC4
+handshake (`E7 01` / `E7 02` under the fixed PSK) before anything else and
+wraps every frame with the negotiated session key; the handshake frames are
+logged, the key never is. It is implemented against a replayed H600B phone
+capture and has not yet been run on a light here; `status`, `census` and
+`send` all accept it. The V2 AES-GCM cipher is implemented in `cipher.py`
+with a known-answer test but not wired to the rig. The per-model state of
+play is in `docs/encrypted-protocol-matrix.md`.
+
+## Guided discovery session
+
+`tools/discover.sh LABEL` is the bench session for one light built on the
+census: pre-flight, power on without pairing, scan (pact and encryption
+columns), the read-only census, the opt-in probe with a prompt for what
+the light visibly did on each dialect, brightness scale, colour
+temperature, legacy scene codes, an optional app pairing with an HCI
+capture and a post-pairing re-check, then `govee_report.py` with your
+observations folded in. Findings go to `bench/LABEL.env`, evidence to
+`bench/LABEL-*.jsonl`, the report to `bench/LABEL-report.md`. The last
+stage prints the `fixtures/govee-models.json` row to add. Re-running keeps
+recorded values. `PYTHON=/path/to/python` overrides `~/rig/bin/python`.
 
 ## Characterising a new light end to end
 

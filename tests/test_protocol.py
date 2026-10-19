@@ -190,3 +190,77 @@ def test_dreamcolor_mode_reply_names_submode_only() -> None:
     assert reply is not None and reply.mode is not None
     assert reply.mode.submode == 0x0B
     assert reply.mode.rgb is None and not reply.mode.is_white
+
+
+def test_read_frames_for_the_census() -> None:
+    assert protocol.hardware_query_frame()[:3] == bytes([0xAA, 0x07, 0x03])
+    assert protocol.ic_count_query_frame()[:3] == bytes([0xAA, 0x40, 0x00])
+    assert protocol.light_count_query_frame()[:2] == bytes([0xAA, 0x0F])
+    assert protocol.secret_query_frame().hex() == "aab100000000000000000000000000000000001b"
+    assert protocol.segment_colors_query_frame(1)[:3] == bytes([0xAA, 0xA5, 0x01])
+    with pytest.raises(ValueError):
+        protocol.segment_colors_query_frame(256)
+
+
+def test_reply_matching_uses_the_selector_where_echoed() -> None:
+    hw = protocol.hardware_query_frame()
+    assert protocol.reply_matches(hw, protocol.build_frame(0x07, [0x03, *b"1.0"], frame_type=0xAA))
+    assert not protocol.reply_matches(hw, protocol.build_frame(0x07, [0x02], frame_type=0xAA))
+    mode = protocol.mode_query_frame()
+    assert protocol.reply_matches(mode, protocol.build_frame(0x05, [0x15, 0x01], frame_type=0xAA))
+    assert not protocol.reply_matches(mode, protocol.build_frame(0x04, [1], frame_type=0xAA))
+    assert not protocol.reply_matches(
+        mode, protocol.build_frame(0x05, [0x02])
+    )  # a 33 echo is an ack
+
+
+def test_parse_capability_replies() -> None:
+    hw = protocol.parse_reply(protocol.build_frame(0x07, [0x03, *b"3.01.01"], frame_type=0xAA))
+    assert hw is not None and hw.hardware == "3.01.01" and hw.raw_selector == 3
+    ic = protocol.parse_reply(protocol.build_frame(0x40, [0x01, 0x2C, 0x0F], frame_type=0xAA))
+    assert ic is not None and (ic.ic_count, ic.segments) == (300, 15)
+    lc = protocol.parse_reply(protocol.build_frame(0x0F, [20], frame_type=0xAA))
+    assert lc is not None and lc.light_count == 20
+    secret = protocol.parse_reply(
+        protocol.build_frame(0xB1, [1, 8, 7, 6, 5, 4, 3, 2, 1], frame_type=0xAA)
+    )
+    assert (
+        secret is not None
+        and secret.secret_present
+        and secret.secret == bytes([8, 7, 6, 5, 4, 3, 2, 1])
+    )
+    absent = protocol.parse_reply(protocol.build_frame(0xB1, [0], frame_type=0xAA))
+    assert absent is not None and absent.secret_present is False and absent.secret is None
+    # GENZERO's H617A page: AA A5 01, three [bri R G B] records.
+    page = protocol.parse_reply(
+        protocol.build_frame(
+            0xA5,
+            [1, 0x64, 0xFF, 0x8D, 0x0B, 0x64, 0xAA, 0x55, 0x11, 0x64, 0xFF, 0x8D, 0x0B],
+            frame_type=0xAA,
+        )
+    )
+    assert page is not None and page.segment_group == 1 and len(page.segment_records or []) == 3
+    assert (
+        page.segment_records[1].rgb == (0xAA, 0x55, 0x11)
+        and page.segment_records[1].brightness == 100
+    )
+    assert protocol.segment_page_has(page, (0xAA, 0x55, 0x11))
+    assert not protocol.segment_page_has(page, (1, 2, 3))
+    assert not protocol.segment_page_has(None, (1, 2, 3))
+
+
+def test_secret_frames_are_redacted_but_stay_valid() -> None:
+    reply = protocol.build_frame(0xB1, [1, 1, 2, 3, 4, 5, 6, 7, 8], frame_type=0xAA)
+    assert protocol.frame_has_secret(reply)
+    redacted, changed = protocol.redact_frame(reply)
+    assert changed and redacted[:3] == bytes([0xAA, 0xB1, 0x01]) and redacted[3:19] == bytes(16)
+    assert protocol.verify_frame(redacted)
+    write = protocol.build_frame(0xB2, [9] * 8)
+    redacted, changed = protocol.redact_frame(write)
+    assert changed and redacted[2:19] == bytes(17) and protocol.verify_frame(redacted)
+    absent = protocol.build_frame(0xB1, [0], frame_type=0xAA)
+    assert not protocol.frame_has_secret(absent) and protocol.redact_frame(absent) == (
+        absent,
+        False,
+    )
+    assert protocol.redact_frame(protocol.power_frame(True)) == (protocol.power_frame(True), False)

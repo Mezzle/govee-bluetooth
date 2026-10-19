@@ -12,9 +12,14 @@ import re
 from dataclasses import dataclass
 
 # Advertised local names look like ``ihoment_H6159_1A2B``, ``Govee_H6159_1A2B``,
-# ``GBK_H6159_1A2B`` or ``GVH6159_1A2B``.
+# ``GBK_H6159_1A2B`` or ``GVH6159_1A2B``. The app's ``BaseBleProcessor`` splits
+# the first three forms on ``_``; for ``GV`` names it takes ``substring(2)``,
+# so the SKU letter is the third character and newer SKUs may omit the
+# separator altogether (``GVH600B4F5A``). ``GVR...`` are sensors, not lights.
+# Light SKUs are ``H`` + digit + three alphanumerics (H6159, H600B, H61F6).
 _NAME_RE = re.compile(
-    r"^(?:ihoment_|Govee_|Minger_|GBK_|GVH|GVR)(H[0-9A-Z]{4})(?:_|$)", re.IGNORECASE
+    r"^(?:(?:ihoment_|Govee_|Minger_|GBK_)(H[0-9][0-9A-Z]{3})(?:_|$)|GV(H[0-9][0-9A-Z]{3}))",
+    re.IGNORECASE,
 )
 
 
@@ -135,6 +140,9 @@ RGBIC_MODELS: dict[str, str] = {
     ),
     "H6168": "Govee RGBIC TV backlight (0x15 colour dialect)",
     "H6199": "Govee RGBIC TV backlight (0x15 colour dialect)",
+    # The most-captured RGBIC strip in the community sources (GENZERO fw 3.02.24,
+    # rnodern, ha-govee-led-ble): 0x15 writes on pact 10/1. Not bench verified.
+    "H617A": "Govee RGBIC strip (0x15 colour dialect)",
     **dict.fromkeys(
         ("H6052", "H6056", "H6059", "H6061", "H6062", "H6065", "H6072", "H6076"),
         "Govee RGBIC light bar / lamp / panel (0x15 colour dialect)",
@@ -183,7 +191,7 @@ def model_from_name(name: str | None) -> str | None:
     match = _NAME_RE.match(name)
     if not match:
         return None
-    return match.group(1).upper()
+    return (match.group(1) or match.group(2)).upper()
 
 
 def is_govee_name(name: str | None) -> bool:
