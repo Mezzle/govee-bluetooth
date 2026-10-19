@@ -173,6 +173,19 @@ capture and has not yet been run on a light here; `status`, `census` and
 with a known-answer test but not wired to the rig. The per-model state of
 play is in `docs/encrypted-protocol-matrix.md`.
 
+## Guided discovery session
+
+`tools/discover.sh LABEL` is the bench session for one light built on the
+census: pre-flight, power on without pairing, scan (pact and encryption
+columns), the read-only census, the opt-in probe with a prompt for what
+the light visibly did on each dialect, brightness scale, colour
+temperature, legacy scene codes, an optional app pairing with an HCI
+capture and a post-pairing re-check, then `govee_report.py` with your
+observations folded in. Findings go to `bench/LABEL.env`, evidence to
+`bench/LABEL-*.jsonl`, the report to `bench/LABEL-report.md`. The last
+stage prints the `fixtures/govee-models.json` row to add. Re-running keeps
+recorded values. `PYTHON=/path/to/python` overrides `~/rig/bin/python`.
+
 ## Characterising a new light end to end
 
 `tools/characterise.sh LABEL` is a guided bench session for one light, from
