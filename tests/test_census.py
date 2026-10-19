@@ -110,6 +110,7 @@ class FakeLight:
 def _no_reset_wait(monkeypatch: pytest.MonkeyPatch) -> None:
     """The between-dialect baseline pause is for human eyes, not tests."""
     monkeypatch.setattr(census, "RESET_SETTLE_S", 0)
+    monkeypatch.setattr(census, "RESET_SETTLE_ASKING_S", 0)
 
 
 H617A_ADV = parse_raw(bytes.fromhex("0388ec000a0101"))
@@ -388,3 +389,18 @@ async def test_probe_goes_back_to_the_baseline_between_dialects(monkeypatch) -> 
     result = await census.async_census(light, probe_writes=True, ask=ask)
     assert seen_before_write == [(0x0D, 0, 0, 0, 0x0A, 0x8C)] * 3
     assert result.echoed == [0x0D] and result.restored == "full"
+
+
+async def test_baseline_reset_is_announced_to_the_watcher() -> None:
+    light = FakeLight(speaks=0x0D)
+    events: list[str] = []
+
+    async def ask(submode: int, rgb: tuple[int, int, int]) -> str | None:
+        events.append(f"ask {submode:02X}")
+        return "no"
+
+    await census.async_census(
+        light, probe_writes=True, ask=ask, notify=lambda t: events.append("reset")
+    )
+    # Every question after the first is preceded by an announced reset.
+    assert events == ["ask 02", "reset", "ask 0B", "reset", "ask 0D", "reset", "ask 15"]

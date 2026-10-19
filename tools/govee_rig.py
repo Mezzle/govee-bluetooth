@@ -216,6 +216,10 @@ def describe_rx(frame: bytes) -> str:
     if not protocol.verify_frame(frame):
         return f"BAD CHECKSUM or length {len(frame)}"
     reply = protocol.parse_reply(frame)
+    if reply is None and frame[0] == protocol.TYPE_WRITE:
+        cmd = CMD_NAMES.get(frame[1], f"cmd {frame[1]:#04x}")
+        verdict = "accepted" if frame[2] == 0 else f"rejected ({frame[2]:#04x})"
+        return f"ack {cmd} write: {verdict}"
     if reply is None:
         kind = TYPE_NAMES.get(frame[0], f"type {frame[0]:#04x}")
         return f"{kind} cmd {frame[1]:#04x} (not a read reply, undecoded)"
@@ -1062,6 +1066,7 @@ async def cmd_census(args: argparse.Namespace) -> None:
                 link,
                 probe_writes=bool(args.probe),
                 ask=make_asker(link, args.address.upper()) if args.ask else None,
+                notify=(lambda text: print(f"\n  ... {text}")) if args.ask else None,
             )
         result.acks = link.acks
         result.bad_frames = link.bad_frames

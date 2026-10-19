@@ -47,9 +47,12 @@ PROBE_COLOR_NAMES: dict[int, str] = {
     protocol.SUBMODE_COLOR_RGBIC: "magenta",
 }
 # After going back to the pre-probe state between dialects, wait this long
-# so the operator sees the baseline and the reset's own write ack arrives
-# before the next probe write is attributed.
+# so the reset's own write ack arrives before the next probe write is
+# attributed. With a person answering, wait long enough for them to see the
+# light settle at the baseline: in the H6006 session a 0.6 s gap made the
+# blue -> white reset look like the 0x15 write's effect.
 RESET_SETTLE_S = 0.6
+RESET_SETTLE_ASKING_S = 2.5
 PROBE_ORDER: tuple[int, ...] = (
     protocol.SUBMODE_COLOR_LEGACY,
     protocol.SUBMODE_COLOR_DREAMCOLOR,
@@ -130,6 +133,7 @@ async def async_census(
     probe_writes: bool = False,
     abort: Callable[[], bool] | None = None,
     ask: Callable[[int, tuple[int, int, int]], Awaitable[str | None]] | None = None,
+    notify: Callable[[str], None] | None = None,
 ) -> CensusResult:
     """Run the read battery (and the probe if asked) over a connected, subscribed link.
 
@@ -143,7 +147,7 @@ async def async_census(
     try:
         await _reads(link, result, abort)
         if probe_writes and not result.silent and not result.aborted:
-            await _probe(link, result, abort, ask)
+            await _probe(link, result, abort, ask, notify)
     except ProbeConnectionLost as err:
         result.error = f"disconnected: {err}"
     return result
@@ -239,6 +243,7 @@ async def _probe(
     result: CensusResult,
     abort: Callable[[], bool] | None,
     ask: Callable[[int, tuple[int, int, int]], Awaitable[str | None]] | None = None,
+    notify: Callable[[str], None] | None = None,
 ) -> None:
     result.probed = True
     powered_on = result.power is False
@@ -279,8 +284,10 @@ async def _probe(
         if submode != PROBE_ORDER[-1] and _restore_frame(result) is not None:
             # Back to the starting state, so the next dialect's change is
             # judged against the same baseline (by eye and by read-back).
+            if notify is not None:
+                notify("back to the starting state; watch it settle before the next colour")
             await link.write(_restore_frame(result))
-            await asyncio.sleep(RESET_SETTLE_S)
+            await asyncio.sleep(RESET_SETTLE_ASKING_S if ask is not None else RESET_SETTLE_S)
             last_mode_rgb = _mode_rgb(result.mode)
 
     restore = _restore_frame(result)
