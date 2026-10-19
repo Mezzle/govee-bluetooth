@@ -212,9 +212,13 @@ async def _probe(link: ProbeLink, result: CensusResult, abort: Callable[[], bool
         if echoed:
             result.echoed.append(submode)
 
-    original = _mode_rgb(result.mode)
-    if original is not None and result.mode is not None:
-        await link.write(protocol.rgb_frame(*original, submode=result.mode.submode))
+    if result.mode is not None and _mode_rgb(result.mode) is not None:
+        # Write the reported body back verbatim: an RGB write would turn a
+        # white (kelvin) 0x0D state into RGB 00 00 00, i.e. dark. The H6006
+        # reported 0D 000000 0A8C 000000 (2700 K white) on the bench.
+        await link.write(
+            protocol.build_frame(protocol.CMD_MODE, [result.mode.submode, *result.mode.body])
+        )
         result.restored = "full"
         if result.mode.submode not in result.echoed:
             result.restore_note = "colour rewritten in the reported dialect, which did not echo"

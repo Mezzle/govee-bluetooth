@@ -321,6 +321,10 @@ class ModeReport:
     white_tint: tuple[int, int, int] | None = None
     color_temp_kelvin: int | None = None
     scene_id: int | None = None
+    # The eight bytes after the sub-mode, as the light reported them. On the
+    # 0x02 and 0x0D kinds seen on hardware (H6159, H6181, H6006) the reply
+    # mirrors the write layout, so writing them back restores the state.
+    body: bytes = b""
 
     @property
     def is_white(self) -> bool:
@@ -427,7 +431,7 @@ def segment_page_has(reply: Reply | None, rgb: tuple[int, int, int]) -> bool:
 
 def _parse_mode(payload: bytes) -> ModeReport:
     submode = payload[0]
-    report = ModeReport(submode=submode)
+    report = ModeReport(submode=submode, body=bytes(payload[1:9]))
     if submode == SUBMODE_COLOR_LEGACY:
         rgb = (payload[1], payload[2], payload[3])
         if payload[4] == WHITE_FLAG_WHITE:

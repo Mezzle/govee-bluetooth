@@ -44,6 +44,10 @@ class FakeLight:
         self.drop_after_writes = drop_after_writes
         self.writes: list[bytes] = []
         self.queries: list[bytes] = []
+        # A verbatim mode body (H6006: 0D 000000 0A8C 000000), reported while
+        # the light is still in that sub-mode and has not taken an RGB write.
+        self.raw_mode_body: list[int] | None = None
+        self.raw_mode_submode: int | None = None
 
     async def write(self, frame: bytes) -> None:
         self.writes.append(frame)
@@ -57,6 +61,8 @@ class FakeLight:
         elif cmd == protocol.CMD_BRIGHTNESS:
             self.brightness = payload[0]
         elif cmd == protocol.CMD_MODE and payload[0] == self.speaks:
+            self.raw_mode_body = list(payload[1:9])
+            self.raw_mode_submode = payload[0]
             self.submode = payload[0]
             offset = 2 if payload[0] == 0x15 else 1
             self.rgb = tuple(payload[offset : offset + 3])
@@ -71,6 +77,8 @@ class FakeLight:
             return protocol.parse_reply(_reply(command, self.brightness))
         if command == protocol.CMD_MODE:
             body = [self.submode]
+            if self.raw_mode_body is not None and self.submode == self.raw_mode_submode:
+                return protocol.parse_reply(_reply(command, self.submode, *self.raw_mode_body))
             if self.submode in (0x02, 0x0D):
                 body += list(self.rgb)
             elif self.submode == 0x15:
@@ -263,3 +271,15 @@ def test_probe_colours_are_distinct_and_safe() -> None:
     assert len(set(colours)) == len(colours)
     for rgb in colours:
         assert all(0 < c < 0xFF for c in rgb)
+
+
+async def test_white_0d_state_is_restored_verbatim_not_as_black() -> None:
+    """The H6006 on the bench: 0x0D white at 2700 K, RGB and tint zero."""
+    light = FakeLight(speaks=0x0D)
+    light.raw_mode_body = [0, 0, 0, 0x0A, 0x8C, 0, 0, 0]
+    light.raw_mode_submode = 0x0D
+    result = await census.async_census(light, probe_writes=True)
+    assert result.mode is not None and result.mode.color_temp_kelvin == 2700
+    restore = [w for w in light.writes if w[1] == protocol.CMD_MODE][-1]
+    assert restore == protocol.build_frame(protocol.CMD_MODE, [0x0D, 0, 0, 0, 0x0A, 0x8C, 0, 0, 0])
+    assert result.restored == "full"
