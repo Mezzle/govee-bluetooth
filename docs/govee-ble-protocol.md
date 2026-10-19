@@ -20,6 +20,7 @@ a citation; anything without one is marked unverified.
 11. [Advertisements and the Home Assistant ecosystem](#11-advertisements-and-home-assistant)
 12. [Per-family summary table](#12-per-family-summary)
 13. [Implications for this repo](#13-implications-for-this-repo)
+14. [Companion documents](#14-companion-documents)
 
 ---
 
@@ -1211,3 +1212,25 @@ research; 15 onwards from the wider scope.
     sensors; the `ctlchannel` AES-GCM devices (H70B3/B4/B5, H6810/11, H6800, H6840)
     and all `encryptVersion != 0` units cannot be driven by this repo's plaintext
     frames (`SPEC:1110-1114`, `SPEC:1179-1182`).
+
+---
+
+## 14. Companion documents
+
+Added 2026-10-19 with the census work:
+
+- `census-gap-analysis.md`: what the two repositories and the external
+  sources establish, the defects found in the Dance Party census, and how
+  protocol knowledge is shared (fixture -> generated headers -> host tests).
+- `encrypted-protocol-matrix.md`: the four session mechanisms (plaintext,
+  pairing secret, AES-ECB+RC4, AES-GCM) with per-model provenance, and the
+  hardware plan. `custom_components/govee_bluetooth/cipher.py` implements
+  both ciphers against hardware-derived vectors.
+- `evidence-schema.md` and `schema/govee-evidence-v1.schema.json`: the
+  record format every producer writes and `tools/govee_report.py` reads.
+- `fixtures/govee-models.json`: the model classification with provenance;
+  `tools/export_fixtures.py` generates the C tables Dance Party vendors.
+
+Items 13 and 16 of section 13 are now implemented (`advertisement.py`,
+`census.needs_secret`, the census and the rig's `2b12` read); item 4 was
+already applied in `protocol.py`; the rest stand.
