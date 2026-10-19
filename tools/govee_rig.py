@@ -102,7 +102,9 @@ def software_version() -> str:
             capture_output=True, text=True, check=True, timeout=5,
         ).stdout.strip()  # fmt: skip
     except (OSError, subprocess.SubprocessError):
-        sha = "unknown"
+        # A copied checkout without .git (the Pi bench) records its commit here.
+        marker = REPO_ROOT / ".rig-commit"
+        sha = marker.read_text().strip() if marker.is_file() else "unknown"
     return f"govee_rig.py {sha}"
 
 
