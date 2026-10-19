@@ -216,6 +216,20 @@ def _mode_rgb(mode: protocol.ModeReport | None) -> tuple[int, int, int] | None:
     return mode.rgb
 
 
+def census_state_name(mode: protocol.ModeReport | None) -> str:
+    """A short name for the pre-probe state, for messages."""
+    if mode is None:
+        return "an unknown state"
+    name = submode_name(mode.submode)
+    if name == "scene":
+        return f"scene {mode.scene_id:#04x}" if mode.scene_id is not None else "a scene"
+    if name.startswith("music"):
+        return "a music mode"
+    if name.startswith("colour"):
+        return f"colour sub-mode {mode.submode:#04x}"
+    return f"mode {mode.submode:#04x}"
+
+
 def _restore_frame(result: CensusResult) -> bytes | None:
     """The pre-probe 0x02 / 0x0D state as a write, or None when it cannot be rewritten.
 
@@ -251,6 +265,12 @@ async def _probe(
         await link.write(protocol.power_frame(True))
     page = result.segment_page
     last_mode_rgb = _mode_rgb(result.mode)
+    if notify is not None and _restore_frame(result) is None:
+        state = census_state_name(result.mode)
+        notify(
+            f"the light started in {state}, which the census cannot write back: there is no "
+            "reset between colours, so compare each with the colour before it"
+        )
     for submode in PROBE_ORDER:
         if abort is not None and abort():
             result.aborted = True

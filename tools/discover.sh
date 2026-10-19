@@ -396,6 +396,25 @@ say "(partly), or q to stop. Where it can, it puts the light back to how it"
 say "started between dialects, so each one is judged from the same baseline."
 say "The light is restored at the end either way; every answer is logged."
 if confirm "Run the probe? It changes the light's colour and may not restore a scene."; then
+  # A scene or music mode cannot be written back, so the probe could neither
+  # reset between colours nor restore at the end. If an earlier run found a
+  # dialect that works, offer a plain white baseline in it first.
+  case "${SUBMODE_BEFORE:-}" in
+    colour02|colour0D) ;;
+    *)
+      known=""
+      case "${ECHOED:-}" in *0D*) known=0D ;; *02*) known=02 ;; esac
+      if [[ -n "$known" ]]; then
+        warn "The light is in ${SUBMODE_BEFORE:-an unknown state}, which the probe cannot put back."
+        if confirm "Set it to plain white (2700 K) in 0x$known first, so there is a baseline?"; then
+          connected baseline send submode "$known" ct 2700
+          sleep 1
+        fi
+      else
+        note "The light is in ${SUBMODE_BEFORE:-an unknown state}: no reset between colours, and no full restore."
+      fi
+      ;;
+  esac
   connected probe census --probe --ask
   P="$BENCH_DIR/$LABEL-probe.jsonl"
   step "Recorded from the probe:"

@@ -404,3 +404,15 @@ async def test_baseline_reset_is_announced_to_the_watcher() -> None:
     )
     # Every question after the first is preceded by an announced reset.
     assert events == ["ask 02", "reset", "ask 0B", "reset", "ask 0D", "reset", "ask 15"]
+
+
+async def test_no_reset_is_announced_when_the_start_was_a_scene() -> None:
+    light = FakeLight(speaks=0x0D, submode=0x04)  # H6006 left in scene 0x0F by the scene stage
+    notes: list[str] = []
+
+    async def ask(submode: int, rgb: tuple[int, int, int]) -> str | None:
+        return "no"
+
+    result = await census.async_census(light, probe_writes=True, ask=ask, notify=notes.append)
+    assert len(notes) == 1 and "scene" in notes[0] and "no reset between colours" in notes[0]
+    assert result.restored == "power"
