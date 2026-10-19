@@ -154,6 +154,7 @@ Discovered automatically (advertised as `ihoment_`, `Govee_`, `GBK_` or `GVH` + 
 | H6143, H6144, H619A, H619B, H619C, H619E, H619Z, H61A0, H61A1, H61A2, H61E1 (RGBIC strips) | Segmented `0x15` colour dialect with a whole-strip mask, brightness 0-100, per the decompiled Govee app. Whole-strip colour and white only; no scenes yet. Untested on hardware. |
 | H61B5 (RGBIC strip with covers), H61E5 (COB strip Pro, RGBIC+W) | Listed as `0x15` on the strength of their siblings (H61B2, H61E0, H61E1 in community BLE captures) and the H61E5's CSA listing as an H61E1 variant. No BLE capture of either exists yet. Untested on hardware. |
 | H6199 (RGBIC TV backlight) | Same `0x15` dialect. Untested on hardware. |
+| H618A (RGBIC strip), H6168 (RGBIC TV backlight) | Same `0x15` dialect, placed by family. Hardware on hand; verification pending. |
 | H6052, H6056, H6059, H6061, H6062, H6065, H6072, H6076 (RGBIC light bars, lamps and panels) | Same `0x15` dialect. Untested on hardware. |
 
 Some H616x and H618x firmware takes brightness as 0-100 rather than 0-255. If
