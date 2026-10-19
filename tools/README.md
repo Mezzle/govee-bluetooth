@@ -103,6 +103,23 @@ Each device gets a verdict with the sources behind it, a capability table
 was restored. Evidence from a Flipper session carries the 🪩 Dance Party
 Certified badge: a provenance mark, nothing more.
 
+## The Blinkt (optional)
+
+A Pimoroni Blinkt on the Pi's header turns into a status strip with
+`--blinkt`: a cyan sweep while scanning, LED 0 green while connected,
+LED 7 flashing as frames go out and LED 6 as replies come in (red on a
+timeout, magenta on a bad checksum), LED 5 green on a write ack, the whole
+strip mirroring every colour written (the dark probe colours brightened so
+you can see them), and the census verdict at the end: a disco sparkle for
+*verified*, amber for *inferred*, red for silent, purple for encrypted.
+`tools/discover.sh` turns it on by itself when it can.
+
+It drives the LEDs through libgpiod 2, so it needs the `gpio` group and
+the system's `python3-libgpiod` visible in the venv
+(`python3 -m venv --system-site-packages ~/rig`), but no root.
+`python3 tools/blinkt.py` walks a colour along the strip to check the
+wiring. Without the board it does nothing.
+
 ## Logging
 
 `--log bench.jsonl` appends every frame in both directions as one JSON object

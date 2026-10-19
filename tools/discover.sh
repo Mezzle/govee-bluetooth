@@ -216,11 +216,15 @@ PYTHON="${PYTHON:-$HOME/rig/bin/python}"
 BENCH_DIR="${BENCH_DIR:-$REPO_DIR/bench}"
 BTMON_PID=""
 
+# The Blinkt status strip (tools/blinkt.py) lights up whenever this user may drive GPIO.
+RIG_FLAGS=()
+if id -nG | grep -qw gpio && [[ -e /dev/gpiochip0 ]]; then RIG_FLAGS+=(--blinkt); fi
+
 # rig TAG ARGS... runs the rig with a per-stage evidence log and shows output.
 rig() {
   local tag="$1"; shift
   printf '  %s$ govee_rig.py %s%s\n' "$DIM" "$*" "$RESET"
-  "$PYTHON" "$RIG" --log "$BENCH_DIR/$LABEL-$tag.jsonl" "$@" 2>&1 | sed 's/^/    /' || true
+  "$PYTHON" "$RIG" ${RIG_FLAGS[@]+"${RIG_FLAGS[@]}"} --log "$BENCH_DIR/$LABEL-$tag.jsonl" "$@" 2>&1 | sed 's/^/    /' || true
 }
 
 # connected TAG SUBCOMMAND ARGS... runs a subcommand against the recorded light.

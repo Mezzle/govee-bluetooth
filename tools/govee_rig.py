@@ -94,6 +94,53 @@ def load_integration() -> tuple[Any, Any, Any, Any, Any, Any, Any]:
 
 const, protocol, models, probe, census, advertisement, cipher = load_integration()
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import blinkt  # noqa: E402  (tools/blinkt.py, next to this script)
+
+# The Blinkt status strip; a no-op unless --blinkt opened it.
+LIGHTS: blinkt.NullBlinkt = blinkt.NullBlinkt()
+
+
+def _frame_colour(frame: bytes) -> tuple[int, int, int] | None:
+    """The RGB a colour write carries, for mirroring on the Blinkt."""
+    if len(frame) < 8 or frame[0] != protocol.TYPE_WRITE or frame[1] != protocol.CMD_MODE:
+        return None
+    if frame[2] == protocol.SUBMODE_COLOR_RGBIC:
+        return (frame[4], frame[5], frame[6])
+    if frame[2] in (
+        protocol.SUBMODE_COLOR_LEGACY,
+        protocol.SUBMODE_COLOR_RGBWW,
+        protocol.SUBMODE_COLOR_DREAMCOLOR,
+    ):
+        if (
+            frame[3:6] == b"\x00\x00\x00"
+            and frame[2] == protocol.SUBMODE_COLOR_RGBWW
+            and any(frame[6:8])
+        ):
+            return (255, 180, 110)  # a 0x0D white: show warm white, not black
+        return (frame[3], frame[4], frame[5])
+    return None
+
+
+def _lights_for(direction: str, frame: bytes, note: str) -> None:
+    if note == "heartbeat":
+        return
+    if direction == "tx":
+        colour = _frame_colour(frame)
+        if colour is not None:
+            LIGHTS.fill(blinkt.visible(colour))
+        else:
+            LIGHTS.flash(7, (60, 60, 60))
+        return
+    if note == "reply":
+        LIGHTS.flash(6, (0, 0, 255))
+    elif note in ("ack", "ack_error"):
+        LIGHTS.flash(5, (0, 255, 0) if note == "ack" else (255, 80, 0))
+    elif note == "bad_checksum":
+        LIGHTS.flash(6, (255, 0, 255))
+    else:
+        LIGHTS.flash(6, (0, 40, 80))
+
 
 def software_version() -> str:
     try:
@@ -260,6 +307,7 @@ class FrameLog:
         if redacted:
             entry["redacted"] = True
         self.write_line(entry)
+        _lights_for(direction, frame, note)
         if self.quiet_heartbeat and note == "heartbeat":
             return
         stamp = entry["at"][11:23]
@@ -322,6 +370,7 @@ class RigLink:
             f"writing {'with' if self.write_response else 'without'} response",
             flush=True,
         )
+        LIGHTS.set_base(0, (0, 80, 0))
         await self._read_bgc()
         if self.cipher_version == "v1":
             await self._handshake_v1()
@@ -385,6 +434,7 @@ class RigLink:
         return self.session.unwrap(data) if self.session is not None else bytes(data)
 
     async def disconnect(self) -> None:
+        LIGHTS.set_base(0, (0, 0, 0))
         if self._heartbeat is not None:
             self._heartbeat.cancel()
             with contextlib.suppress(asyncio.CancelledError):
@@ -433,6 +483,7 @@ class RigLink:
             )
             return await asyncio.wait_for(future, QUERY_TIMEOUT)
         except TimeoutError:
+            LIGHTS.flash(6, (255, 0, 0), 0.3)
             print(
                 f"            -- no reply to {CMD_NAMES.get(command, hex(command))} query within {QUERY_TIMEOUT}s"
             )
@@ -747,7 +798,11 @@ async def resolve_settings(args: argparse.Namespace) -> Settings:
 async def cmd_scan(args: argparse.Namespace) -> None:
     kwargs = {"adapter": args.adapter} if args.adapter else {}
     print(f"scanning for {args.seconds}s ...", flush=True)
-    found = await BleakScanner.discover(timeout=args.seconds, return_adv=True, **kwargs)
+    LIGHTS.sweep((0, 200, 255))
+    try:
+        found = await BleakScanner.discover(timeout=args.seconds, return_adv=True, **kwargs)
+    finally:
+        LIGHTS.off()
     rows = []
     for device, adv in found.values():
         name = adv.local_name or device.name
@@ -907,6 +962,11 @@ async def cmd_census(args: argparse.Namespace) -> None:
     print(f"  verdict        : {verdict.family} / {verdict.security} / {verdict.confidence}")
     for reason in verdict.reasons:
         print(f"                   - {reason}")
+    if LIGHTS.available:
+        print(
+            "  (verdict on the Blinkt: sparkle verified, amber inferred, red silent, purple encrypted)"
+        )
+        await asyncio.to_thread(LIGHTS.verdict, verdict.family, verdict.confidence)
     if result.secret_present and not args.keep_secrets:
         print(
             "  (the AA B1 secret was read; it is not in the log. --keep-secrets keeps it, for a private file)"
@@ -1006,6 +1066,9 @@ def build_parser() -> argparse.ArgumentParser:
         help="run the AES-ECB+RC4 handshake and wrap every frame (experimental)",
     )
     parser.add_argument("-v", "--verbose", action="store_true", help="bleak debug logging")
+    parser.add_argument(
+        "--blinkt", action="store_true", help="show progress on a Pimoroni Blinkt (tools/blinkt.py)"
+    )
     sub = parser.add_subparsers(dest="command", required=True)
 
     p_scan = sub.add_parser("scan", help="list Govee lights in range")
@@ -1064,8 +1127,13 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: Sequence[str] | None = None) -> None:
+    global LIGHTS
     args = build_parser().parse_args(argv)
     logging.basicConfig(level=logging.DEBUG if args.verbose else logging.WARNING)
+    if args.blinkt:
+        LIGHTS = blinkt.open_blinkt()
+        if not LIGHTS.available:
+            print(f"warning: --blinkt: {LIGHTS.reason}")
     try:
         if args.command == "scan":
             asyncio.run(cmd_scan(args))
@@ -1083,6 +1151,8 @@ def main(argv: Sequence[str] | None = None) -> None:
         print("\ninterrupted")
     except (BleakError, probe.ProbeConnectionLost, OSError) as err:
         sys.exit(f"bluetooth error: {err}")
+    finally:
+        LIGHTS.close()
 
 
 if __name__ == "__main__":
