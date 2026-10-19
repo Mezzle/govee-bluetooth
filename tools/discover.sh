@@ -342,21 +342,19 @@ record VERDICT "verdict line (family / security / confidence):"
 record SUBMODE_BEFORE "submode_name before any write (e.g. colour15, scene, '?'):"
 
 # ── 5 ─────────────────────────────────────────────────────────────────────
-stage "Probe census: one colour per dialect"
-say "Writes a distinct dark colour in 0x02, 0x0B, 0x0D and 0x15, reads back"
-say "after each, then restores what it can. The log can tell which dialect"
-say "the firmware stored; only you can tell which one lit the LEDs."
-say "Colours: 02 = 12 34 56, 0B = 15 37 59, 0D = 13 35 57, 15 = 14 36 58 (all dark blue-ish)."
+stage "Probe census: one dialect at a time"
+say "Writes a distinct dark colour in each of four dialects, one at a time,"
+say "and stops after each to ask whether the light changed. Answer y (it"
+say "changed to a dark blue), n (no change), w (changed, but to something"
+say "else) or p (partly), or q to stop; the light is restored either way."
+say "Each answer goes into the evidence log as an observation."
 if confirm "Run the probe? It changes the light's colour and may not restore a scene."; then
-  connected probe census --probe
-  step "Watch the light through the four writes (about two seconds each)."
-  record VISUAL_02 "0x02 write: visible change? (yes / no / wrong colour / partial):"
-  record VISUAL_0B "0x0B write: visible change? (yes / no / wrong colour / partial):"
-  record VISUAL_0D "0x0D write: visible change? (yes / no / wrong colour / partial):"
-  record VISUAL_15 "0x15 write: visible change? (yes / no / wrong colour / partial):"
-  record ECHOED "'echoed' from the census result (e.g. 15, or 'none'):"
-  record RESTORED "'restored' from the census result (full / power / none):"
-  step "Was the light back where it started afterwards (colour, mode, power)?"
+  connected probe census --probe --ask
+  step "From the 'census result' block above:"
+  record ECHOED "'echoed' (e.g. 0D, or 'none'):"
+  record PROBE_ACKS "'probe_acks' (which dialects the firmware accepted or rejected):"
+  record RESTORED "'restored' (full / power / none):"
+  step "Is the light back where it started (colour, mode, power)?"
   record RESTORE_OK "Restored as far as you could see? (yes / no, with a note):"
 else
   note "probe skipped"
@@ -426,12 +424,8 @@ fi
 # ── 9 ─────────────────────────────────────────────────────────────────────
 stage "Report"
 say "Folding your observations into the evidence and generating the report."
+# The probe's per-dialect answers are already in the log as observations.
 observe=()
-for sm in 02 0B 0D 15; do
-  v="VISUAL_$sm"
-  [[ -n "${!v:-}" ]] || continue
-  observe+=(--observe "$ADDRESS=probe 0x$sm: ${!v};capability=rgb;outcome=$(outcome "${!v}");dialect=0x$sm")
-done
 [[ -n "${CT_RESULT:-}" ]] && observe+=(--observe "$ADDRESS=colour temperature in 0x$CT_SUBMODE: $CT_RESULT;capability=rgbww;outcome=$(outcome "$CT_RESULT")")
 [[ -n "${SCENES_ACCEPTED:-}" ]] && observe+=(--observe "$ADDRESS=legacy scene IDs that ran: $SCENES_ACCEPTED;capability=scene;outcome=$([[ "${SCENES_ACCEPTED,,}" == none ]] && echo unchanged || echo worked)")
 [[ -n "${BRIGHTNESS_SCALE:-}" ]] && observe+=(--observe "$ADDRESS=brightness scale $BRIGHTNESS_SCALE;capability=brightness;outcome=worked")

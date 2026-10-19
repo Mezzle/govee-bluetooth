@@ -340,6 +340,7 @@ class RigLink:
         self.bad_frames = 0
         self.bgc: bytes | None = None
         self.write_response = True  # set from the control characteristic's properties on connect
+        self.ack_log: list[tuple[int, int]] = []  # (cmd, status byte) of every 33 xx ack, in order
 
     async def __aenter__(self) -> RigLink:
         await self.connect()
@@ -505,6 +506,7 @@ class RigLink:
         if len(frame) == protocol.FRAME_LENGTH and frame[0] == protocol.TYPE_WRITE:
             # The firmware's own acknowledgement of a write: 33 <cmd> with byte 2 == 0.
             self.log.record("rx", frame, "ack" if frame[2] == 0 else "ack_error")
+            self.ack_log.append((frame[1], frame[2]))
             if frame[2] == 0:
                 self.acks += 1
             return
@@ -890,6 +892,82 @@ async def cmd_status(args: argparse.Namespace) -> None:
             await asyncio.sleep(args.hold)
 
 
+PROBE_DESCRIPTIONS = {
+    protocol.SUBMODE_COLOR_LEGACY: "0x02, the H6159 legacy colour",
+    protocol.SUBMODE_COLOR_DREAMCOLOR: "0x0B, the dreamcolor RGBIC colour",
+    protocol.SUBMODE_COLOR_RGBWW: "0x0D, the RGBWW bulb/lamp colour",
+    protocol.SUBMODE_COLOR_RGBIC: "0x15, the segmented RGBIC colour",
+}
+ANSWERS = {"y": "yes", "yes": "yes", "n": "no", "no": "no", "w": "wrong", "wrong": "wrong",
+           "p": "partial", "partial": "partial", "q": None, "quit": None}  # fmt: skip
+OUTCOMES = {"yes": "worked", "partial": "partial", "wrong": "partial", "no": "unchanged"}
+
+
+async def prompt_keeping_alive(link: RigLink, prompt: str) -> str | None:
+    """input() off the event loop, sending AA 01 heartbeats so the light keeps the link."""
+    loop = asyncio.get_running_loop()
+    answer = loop.run_in_executor(None, _read_line, prompt)
+    while True:
+        done, _ = await asyncio.wait({answer}, timeout=HEARTBEAT_INTERVAL)
+        if done:
+            return answer.result()
+        if link.connected and link.client is not None:
+            frame = protocol.heartbeat_frame()
+            link.log.record("tx", frame, "heartbeat")
+            with contextlib.suppress(BleakError, OSError):
+                await link.client.write_gatt_char(
+                    const.CONTROL_CHARACTERISTIC_UUID, link._wrap(frame), response=False
+                )
+
+
+def _read_line(prompt: str) -> str | None:
+    try:
+        return input(prompt)
+    except EOFError:
+        return None
+
+
+def make_asker(link: RigLink, address: str):  # type: ignore[no-untyped-def]
+    """The census ``ask`` callback: one question per probe write, logged as an observation."""
+
+    async def ask(submode: int, rgb: tuple[int, int, int]) -> str | None:
+        hex_rgb = " ".join(f"{c:02X}" for c in rgb)
+        print(
+            f"\n  >>> wrote {PROBE_DESCRIPTIONS.get(submode, hex(submode))}: dark colour {hex_rgb}"
+        )
+        while True:
+            raw = await prompt_keeping_alive(
+                link,
+                "  >>> Did the light change? [y]es / [n]o / [w]rong colour / [p]artial / [q]uit: ",
+            )
+            if raw is None:
+                return None
+            key = raw.strip().lower()
+            if key in ANSWERS:
+                answer = ANSWERS[key]
+                break
+            print("      (y, n, w, p or q)")
+        if answer is None:
+            print("  >>> stopping the probe; restoring the light")
+            return None
+        link.log.write_line(
+            {
+                "summary": "observation",
+                "schema": census.SCHEMA,
+                "source": "manual",
+                "at": now_iso(),
+                "address": address,
+                "observed": f"probe 0x{submode:02X} wrote {hex_rgb}: {answer}",
+                "capability": "rgb",
+                "outcome": OUTCOMES[answer],
+                "dialect": f"0x{submode:02X}",
+            }
+        )
+        return answer
+
+    return ask
+
+
 def _manufacturer_data(device: Any) -> dict[int, bytes] | None:
     """Manufacturer data from a BLEDevice found by address (BlueZ keeps it in details["props"])."""
     if device is None:
@@ -931,7 +1009,11 @@ async def cmd_census(args: argparse.Namespace) -> None:
         )
     async with RigLink(args.address, log, args.adapter, args.cipher) as link:
         async with link._busy:
-            result = await census.async_census(link, probe_writes=bool(args.probe))
+            result = await census.async_census(
+                link,
+                probe_writes=bool(args.probe),
+                ask=make_asker(link, args.address.upper()) if args.ask else None,
+            )
         result.acks = link.acks
         result.bad_frames = link.bad_frames
         verdict = census.classify(result, model=settings.model, adv=adv, bgc=link.bgc)
@@ -956,7 +1038,7 @@ async def cmd_census(args: argparse.Namespace) -> None:
     print("\ncensus result:")
     for key in ("firmware", "hardware", "power", "brightness", "submode", "submode_name", "ic_count", "segments",
                 "light_count", "secret_present", "segment_page", "reads", "replies", "acks", "bad_frames",
-                "echoed", "restored", "restore_note", "error"):  # fmt: skip
+                "echoed", "probe_acks", "observed", "restored", "restore_note", "error"):  # fmt: skip
         if key in record:
             print(f"  {key:<15}: {record[key]}")
     print(f"  verdict        : {verdict.family} / {verdict.security} / {verdict.confidence}")
@@ -1096,6 +1178,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="the shared read battery, with an optional probe; writes govee-evidence/1 records",
     )
     add_connect_args(p_census)
+    p_census.add_argument(
+        "--ask",
+        action="store_true",
+        help="with --probe: stop after each write and ask whether the light changed",
+    )
     p_census.add_argument(
         "--probe",
         action="store_true",

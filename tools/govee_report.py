@@ -456,14 +456,13 @@ def capabilities(
         cap = obs.get("capability")
         outcome = obs.get("outcome", "")
         if cap in caps:
-            level = (
-                "observed"
-                if outcome in ("worked", "partial")
-                else "failed"
-                if outcome == "failed"
-                else "observed"
-            )
-            set_level(cap, level, f"operator: {obs.get('observed', '')}")
+            # "unchanged" on one dialect says nothing about the capability:
+            # another dialect may drive it. Only a change, or an outright
+            # failure, is evidence.
+            if outcome in ("worked", "partial"):
+                set_level(cap, "observed", f"operator: {obs.get('observed', '')}")
+            elif outcome == "failed":
+                set_level(cap, "failed", f"operator: {obs.get('observed', '')}")
     return caps
 
 

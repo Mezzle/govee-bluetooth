@@ -154,3 +154,20 @@ def test_observation_parsing(report) -> None:
     )
     with pytest.raises(argparse.ArgumentTypeError):
         report.parse_observation("no-equals-sign")
+
+
+def test_no_change_on_one_dialect_is_not_an_rgb_capability(report) -> None:
+    doc = _doc(
+        report,
+        "pi_rig_h6181.jsonl",
+        observe=["A4:C1:38:FB:1E:00=probe 0x02: no;capability=rgb;outcome=unchanged"],
+    )
+    (dev,) = doc["devices"]
+    assert dev["capabilities"]["rgb"]["level"] != "observed"
+    doc = _doc(
+        report,
+        "pi_rig_h6181.jsonl",
+        observe=["A4:C1:38:FB:1E:00=probe 0x0D: yes;capability=rgb;outcome=worked"],
+    )
+    (dev,) = doc["devices"]
+    assert dev["capabilities"]["rgb"]["level"] == "observed"

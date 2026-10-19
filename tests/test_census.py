@@ -283,3 +283,76 @@ async def test_white_0d_state_is_restored_verbatim_not_as_black() -> None:
     restore = [w for w in light.writes if w[1] == protocol.CMD_MODE][-1]
     assert restore == protocol.build_frame(protocol.CMD_MODE, [0x0D, 0, 0, 0, 0x0A, 0x8C, 0, 0, 0])
     assert result.restored == "full"
+
+
+class AckingLight(FakeLight):
+    """Acks every mode write the way the H6006 did: 33 05 00 if understood, 33 05 01 if not."""
+
+    def __init__(self, **kwargs) -> None:
+        super().__init__(**kwargs)
+        self.ack_log: list[tuple[int, int]] = []
+
+    async def write(self, frame: bytes) -> None:
+        await super().write(frame)
+        if frame[1] == protocol.CMD_MODE:
+            self.ack_log.append((protocol.CMD_MODE, 0 if frame[2] == self.speaks else 1))
+
+
+async def test_probe_records_write_acks_per_dialect() -> None:
+    light = AckingLight(speaks=0x0D)
+    result = await census.async_census(light, probe_writes=True)
+    assert result.probe_acks == {
+        0x02: "rejected",
+        0x0B: "rejected",
+        0x0D: "accepted",
+        0x15: "rejected",
+    }
+    verdict = census.classify(result, model="H6006", adv=None)
+    assert any("accepted 0x0d; rejected 0x02, 0x0b, 0x15" in r for r in verdict.reasons)
+    rec = census.summary_record(
+        result,
+        address="x",
+        name=None,
+        model="H6006",
+        adv=None,
+        rssi=None,
+        source="pi",
+        at="t",
+        software="s",
+    )
+    assert rec["probe_acks"] == {
+        "02": "rejected",
+        "0B": "rejected",
+        "0D": "accepted",
+        "15": "rejected",
+    }
+
+
+async def test_probe_asks_after_each_write_before_reading_back() -> None:
+    light = FakeLight(speaks=0x0D)
+    asked: list[tuple[int, int]] = []
+
+    async def ask(submode: int, rgb: tuple[int, int, int]) -> str | None:
+        # The write for this dialect is the last thing sent; no read-back yet.
+        asked.append((submode, len(light.queries)))
+        assert light.writes[-1][2] == submode
+        return "yes" if submode == 0x0D else "no"
+
+    result = await census.async_census(light, probe_writes=True, ask=ask)
+    assert [s for s, _ in asked] == list(census.PROBE_ORDER)
+    assert result.observed == {0x02: "no", 0x0B: "no", 0x0D: "yes", 0x15: "no"}
+    assert any(
+        "operator saw a change on 0x0d" in r
+        for r in census.classify(result, model="H6006", adv=None).reasons
+    )
+
+
+async def test_quitting_the_questions_still_restores() -> None:
+    light = FakeLight(speaks=0x0D, power=False)
+
+    async def ask(submode: int, rgb: tuple[int, int, int]) -> str | None:
+        return None if submode == 0x0B else "no"
+
+    result = await census.async_census(light, probe_writes=True, ask=ask)
+    assert result.aborted and result.observed == {0x02: "no"}
+    assert result.restored == "full" and light.power is False

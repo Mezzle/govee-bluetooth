@@ -13,7 +13,7 @@ the observations that support it, and the report generator renders that.
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 
 from . import protocol
@@ -94,6 +94,13 @@ class CensusResult:
     segment_page: protocol.Reply | None = None
     probed: bool = False
     echoed: list[int] = field(default_factory=list)
+    # Per probe dialect, what the firmware's write ack said: "accepted"
+    # (33 05 00), "rejected" (33 05 <non-zero>) or "none". The H6006 rejects
+    # 02 / 0B / 15 with 33 05 01 and accepts 0D with 33 05 00 (bench).
+    probe_acks: dict[int, str] = field(default_factory=dict)
+    # Per probe dialect, what the operator saw when asked: "yes", "no",
+    # "wrong" (changed, but not to the probe colour) or "partial".
+    observed: dict[int, str] = field(default_factory=dict)
     restored: str | None = None  # "full", "power", "none"
     restore_note: str | None = None
     error: str | None = None
@@ -108,13 +115,21 @@ async def async_census(
     *,
     probe_writes: bool = False,
     abort: Callable[[], bool] | None = None,
+    ask: Callable[[int, tuple[int, int, int]], Awaitable[str | None]] | None = None,
 ) -> CensusResult:
-    """Run the read battery (and the probe if asked) over a connected, subscribed link."""
+    """Run the read battery (and the probe if asked) over a connected, subscribed link.
+
+    ``ask(submode, rgb)`` is called right after each probe write, before the
+    read-back, so a person can say whether the light changed; it returns
+    "yes", "no", "wrong", "partial", or None to stop (the light is still
+    restored). Links that expose an ``ack_log`` list of ``(cmd, status)``
+    pairs get each probe write's application ack recorded too.
+    """
     result = CensusResult(connected=True, subscribed=True)
     try:
         await _reads(link, result, abort)
         if probe_writes and not result.silent and not result.aborted:
-            await _probe(link, result, abort)
+            await _probe(link, result, abort, ask)
     except ProbeConnectionLost as err:
         result.error = f"disconnected: {err}"
     return result
@@ -183,7 +198,22 @@ def _mode_rgb(mode: protocol.ModeReport | None) -> tuple[int, int, int] | None:
     return mode.rgb
 
 
-async def _probe(link: ProbeLink, result: CensusResult, abort: Callable[[], bool] | None) -> None:
+def _ack_since(link: ProbeLink, start: int, command: int) -> str:
+    ack_log = getattr(link, "ack_log", None)
+    if ack_log is None:
+        return "none"
+    for cmd, status in ack_log[start:]:
+        if cmd == command:
+            return "accepted" if status == 0 else "rejected"
+    return "none"
+
+
+async def _probe(
+    link: ProbeLink,
+    result: CensusResult,
+    abort: Callable[[], bool] | None,
+    ask: Callable[[int, tuple[int, int, int]], Awaitable[str | None]] | None = None,
+) -> None:
     result.probed = True
     powered_on = result.power is False
     if powered_on:
@@ -197,7 +227,15 @@ async def _probe(link: ProbeLink, result: CensusResult, abort: Callable[[], bool
         rgb = PROBE_COLORS[submode]
         stale_page = protocol.segment_page_has(page, rgb)
         stale_mode = last_mode_rgb == rgb
+        acks_before = len(getattr(link, "ack_log", None) or [])
         await link.write(protocol.rgb_frame(*rgb, submode=submode))
+        if ask is not None:
+            answer = await ask(submode, rgb)
+            if answer is None:
+                result.aborted = True
+                result.probe_acks[submode] = _ack_since(link, acks_before, protocol.CMD_MODE)
+                break
+            result.observed[submode] = answer
         echoed = False
         reply = await _query(link, result, protocol.mode_query_frame(), abort)
         if reply is not None and reply.mode is not None and reply.mode.submode == submode:
@@ -211,6 +249,7 @@ async def _probe(link: ProbeLink, result: CensusResult, abort: Callable[[], bool
             page = reply
         if echoed:
             result.echoed.append(submode)
+        result.probe_acks[submode] = _ack_since(link, acks_before, protocol.CMD_MODE)
 
     if result.mode is not None and _mode_rgb(result.mode) is not None:
         # Write the reported body back verbatim: an RGB write would turn a
@@ -297,6 +336,20 @@ def classify(
             confidence = "inferred"
         return Verdict(family, security, confidence, reasons)
 
+    rejected = [s for s, a in result.probe_acks.items() if a == "rejected"]
+    accepted = [s for s, a in result.probe_acks.items() if a == "accepted"]
+    seen = [s for s, a in result.observed.items() if a in ("yes", "partial")]
+    if accepted or rejected:
+        reasons.append(
+            "write acks: accepted "
+            + (", ".join(f"{s:#04x}" for s in accepted) or "none")
+            + "; rejected "
+            + (", ".join(f"{s:#04x}" for s in rejected) or "none")
+        )
+    if result.observed:
+        reasons.append(
+            "operator saw a change on " + (", ".join(f"{s:#04x}" for s in seen) or "no dialect")
+        )
     if result.echoed:
         best = result.echoed[0]
         reasons.append("probe colour echoed on " + ", ".join(f"{s:#04x}" for s in result.echoed))
@@ -415,6 +468,10 @@ def summary_record(
     rec["probed"] = result.probed
     if result.probed:
         rec["echoed"] = ",".join(f"{s:02X}" for s in result.echoed)
+        if result.probe_acks:
+            rec["probe_acks"] = {f"{s:02X}": a for s, a in result.probe_acks.items()}
+        if result.observed:
+            rec["observed"] = {f"{s:02X}": a for s, a in result.observed.items()}
         rec["restored"] = result.restored
         if result.restore_note:
             rec["restore_note"] = result.restore_note
