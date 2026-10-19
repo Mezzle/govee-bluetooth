@@ -240,16 +240,26 @@ btmon_start() {
     SKIPPED+=("HCI capture $file")
     return
   fi
-  sudo -n true 2>/dev/null || say "btmon needs sudo; you may be asked for your password."
+  # A sudo rule for btmon alone is enough (the bench Pi's homelab-operator
+  # has exactly that); without one, sudo asks for a password here.
+  sudo -n -l "$(command -v btmon)" >/dev/null 2>&1 || say "btmon needs sudo; you may be asked for your password."
   sudo btmon -w "$file" >/dev/null 2>&1 &
   BTMON_PID=$!
   sleep 1
+  if ! kill -0 "$BTMON_PID" 2>/dev/null; then
+    warn "btmon did not start (no sudo for it?); skipping HCI capture"
+    SKIPPED+=("HCI capture $file")
+    BTMON_PID=""
+    return
+  fi
   printf '  %s● recording%s HCI to %s\n' "$GREEN" "$RESET" "$file"
 }
 
 btmon_stop() {
   [[ -n "$BTMON_PID" ]] || return 0
-  sudo kill -INT "$BTMON_PID" 2>/dev/null || true
+  # Signal the sudo process, not btmon: sudo relays SIGINT to its child, and
+  # an unprivileged user may signal its own sudo but not root's btmon.
+  kill -INT "$BTMON_PID" 2>/dev/null || true
   wait "$BTMON_PID" 2>/dev/null || true
   BTMON_PID=""
   printf '  %s■ capture stopped%s\n' "$GREEN" "$RESET"

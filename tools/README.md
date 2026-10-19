@@ -198,7 +198,8 @@ columns), the read-only census, the opt-in probe with a prompt for what
 the light visibly did on each dialect, brightness scale, colour
 temperature, legacy scene codes, an optional app pairing with an HCI
 capture and a post-pairing re-check, then `govee_report.py` with your
-observations folded in. Findings go to `bench/LABEL.env`, evidence to
+observations folded in. The pairing capture needs `btmon` as root; a
+sudoers rule for `/usr/bin/btmon` alone is enough. Findings go to `bench/LABEL.env`, evidence to
 `bench/LABEL-*.jsonl`, the report to `bench/LABEL-report.md`. The last
 stage prints the `fixtures/govee-models.json` row to add. Re-running keeps
 recorded values. `PYTHON=/path/to/python` overrides `~/rig/bin/python`.
