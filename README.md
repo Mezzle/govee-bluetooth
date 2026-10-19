@@ -235,3 +235,12 @@ The protocol layer (`protocol.py`) has no Home Assistant dependency and its
 tests pin every frame to published captures. The entity and config flow tests
 run against Home Assistant's real Bluetooth manager with a fake H6159 that
 answers status queries the way real firmware does.
+
+### Bench test rig
+
+`tools/govee_rig.py` drives a light from any Linux machine with BlueZ (a
+Raspberry Pi next to the strip, for instance) using the same `protocol.py`,
+`models.py` and `probe.py` as the integration, with no Home Assistant
+installed. It scans, runs the status reads and the active probe, sends named
+or raw frames, and reports whether the light echoes each write. See
+[tools/README.md](tools/README.md).
