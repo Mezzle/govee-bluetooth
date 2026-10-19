@@ -258,6 +258,27 @@ btmon_stop() {
 # record KEY "Prompt" asks the human to type what they saw, and keeps it.
 record() { ask "$1" "$2" && write_env "$1" "${!1}"; }
 
+# q LOG QUERY... reads a value back out of a stage's evidence log.
+QUERY="$TOOLS_DIR/evidence_query.py"
+q() { "$PYTHON" "$QUERY" "$@" 2>/dev/null || true; }
+
+# fact KEY "Label" VALUE records something the log already says; no question.
+fact() {
+  local key="$1" label="$2" value="${3:-}"
+  printf '  %s%-26s%s %s\n' "$DIM" "$label" "$RESET" "${value:-(none)}"
+  write_env "$key" "${value:-none}" >/dev/null
+}
+
+# suggest KEY "Prompt" VALUE asks, offering what the log suggests as the default.
+suggest() {
+  local key="$1" prompt="$2" value="${3:-}"
+  if [[ -n "$value" ]]; then
+    write_env "$key" "$value" >/dev/null
+    note "the log suggests: $value"
+  fi
+  record "$key" "$prompt"
+}
+
 # outcome yes|no|wrong|partial -> the report's observation vocabulary.
 outcome() {
   case "${1,,}" in
@@ -313,20 +334,43 @@ pause "Powered on and lit?"
 
 # ── 3 ─────────────────────────────────────────────────────────────────────
 stage "Find it"
-say "Scanning for Govee lights. Yours should be the strongest signal."
-say "The pact and enc columns come from the advertisement: pact decides 0x0B"
-say "vs 0x15 on dreamcolor SKUs, enc=yes means an AES-wrapped link."
+say "Scanning for Govee lights; the one nearest the Pi is listed first."
+say "pact decides 0x0B vs 0x15 on dreamcolor SKUs; enc=yes means an AES-wrapped link."
 rig scan scan --seconds 10
-step "Find your light in the table above."
-record ADDRESS "Bluetooth address (AA:BB:CC:DD:EE:FF):"
-record ADV_NAME "Advertised name exactly as shown:"
-record MODEL "Model from the name (e.g. H618A):"
-record PACT "pact column (e.g. 10/1, or '-'):"
-record ENC "enc column (yes / no / ?):"
+mapfile -t FOUND < <(q "$BENCH_DIR/$LABEL-scan.jsonl" ads)
+if (( ${#FOUND[@]} == 0 )); then
+  warn "No Govee light in the scan log. Enter it by hand, or Ctrl-C and power it on."
+  record ADDRESS "Bluetooth address (AA:BB:CC:DD:EE:FF):"
+  record ADV_NAME "Advertised name exactly as shown:"
+  record MODEL "Model from the name (e.g. H618A):"
+  record PACT "pact column (e.g. 10/1, or '-'):"
+  record ENC "enc column (yes / no / ?):"
+else
+  want="${LABEL%%[-_]*}"; want="${want^^}"; pick=1
+  for n in "${!FOUND[@]}"; do
+    IFS='|' read -r a nm mdl pc en rs <<< "${FOUND[$n]}"
+    [[ "$mdl" == "$want" && $pick == 1 && $n -gt 0 ]] && pick=$((n + 1))
+    printf '  %2d) %-6s %-22s %s  pact %-5s enc %-3s %s dBm\n' $((n + 1)) "$mdl" "$nm" "$a" "$pc" "$en" "$rs"
+  done
+  printf '  %sWhich one is yours?%s %s[%s]%s ' "$BOLD" "$RESET" "$DIM" "$pick" "$RESET"
+  read -r choice || true
+  choice="${choice:-$pick}"
+  if ! [[ "$choice" =~ ^[0-9]+$ ]] || (( choice < 1 || choice > ${#FOUND[@]} )); then
+    warn "no such entry; using $pick"
+    choice=$pick
+  fi
+  IFS='|' read -r a nm mdl pc en rs <<< "${FOUND[$((choice - 1))]}"
+  fact ADDRESS "address" "$a"
+  fact ADV_NAME "advertised name" "$nm"
+  fact MODEL "model" "$mdl"
+  fact PACT "pact" "$pc"
+  fact ENC "encrypted (advertisement)" "$en"
+fi
 if [[ "${ENC,,}" == yes* ]]; then
   warn "This light advertises an encrypted link. Plaintext reads will be ignored;"
   warn "the census still records the GATT facts. See docs/encrypted-protocol-matrix.md."
 fi
+pause
 
 # ── 4 ─────────────────────────────────────────────────────────────────────
 stage "Read-only census"
@@ -334,12 +378,14 @@ say "The shared read battery (power, brightness, firmware, mode, hardware,"
 say "IC/segment count, light count, pairing secret, one segment page) and the"
 say "2b12 BGC-info bytes. Nothing is written to the light."
 connected census census
-step "From the 'census result' block above:"
-record FIRMWARE "firmware (or 'none'):"
-record HW_VERSION "hardware (or 'none'):"
-record BGC "2b12 bytes as printed (hex, or 'none'):"
-record VERDICT "verdict line (family / security / confidence):"
-record SUBMODE_BEFORE "submode_name before any write (e.g. colour15, scene, '?'):"
+C="$BENCH_DIR/$LABEL-census.jsonl"
+step "Recorded from the census:"
+fact FIRMWARE "firmware" "$(q "$C" light firmware)"
+fact HW_VERSION "hardware" "$(q "$C" light hardware)"
+fact BGC "2b12 bytes" "$(q "$C" light bgc)"
+fact SUBMODE_BEFORE "mode before any write" "$(q "$C" light submode_name)"
+fact VERDICT "verdict" "$(q "$C" light verdict)"
+pause
 
 # ── 5 ─────────────────────────────────────────────────────────────────────
 stage "Probe census: one dialect at a time"
@@ -351,10 +397,13 @@ say "started between dialects, so each one is judged from the same baseline."
 say "The light is restored at the end either way; every answer is logged."
 if confirm "Run the probe? It changes the light's colour and may not restore a scene."; then
   connected probe census --probe --ask
-  step "From the 'census result' block above:"
-  record ECHOED "'echoed' (e.g. 0D, or 'none'):"
-  record PROBE_ACKS "'probe_acks' (which dialects the firmware accepted or rejected):"
-  record RESTORED "'restored' (full / power / none):"
+  P="$BENCH_DIR/$LABEL-probe.jsonl"
+  step "Recorded from the probe:"
+  fact ECHOED "echoed (read back)" "$(q "$P" light echoed)"
+  fact PROBE_ACKS "firmware write acks" "$(q "$P" light probe_acks)"
+  fact OBSERVED "what you said you saw" "$(q "$P" light observed)"
+  fact RESTORED "restored" "$(q "$P" light restored)"
+  fact VERDICT_PROBE "verdict" "$(q "$P" light verdict)"
   step "Is the light back where it started (colour, mode, power)?"
   record RESTORE_OK "Restored as far as you could see? (yes / no, with a note):"
 else
@@ -368,13 +417,26 @@ say "Brightness 100 then 200 tells 0-100 from 0-255 firmware: a 0-100 light"
 say "reports the second as unchanged or clamped. Then a white in the dialect"
 say "that echoed, at two temperatures, to see whether the reply carries kelvin."
 connected bri verify on bri 100 sleep 1 bri 200 sleep 1 bri 50
-record BRIGHTNESS_SCALE "Brightness scale (255 if 200 echoed, 100 if clamped or ignored, other):"
-ask CT_SUBMODE "Sub-mode to try white in (0D or 15; from 'echoed' above, default 15):" || true
-CT_SUBMODE="${CT_SUBMODE:-15}"
-write_env CT_SUBMODE "$CT_SUBMODE"
+B="$BENCH_DIR/$LABEL-bri.jsonl"
+case "$(q "$B" verify brightness 200)" in
+  yes) scale=255 ;;
+  no)  scale=100 ;;
+  *)   scale="" ;;
+esac
+step "Did the light get brighter on 200 than on 100?"
+suggest BRIGHTNESS_SCALE "Brightness scale (255, 100, or other):" "$scale"
+echoed_now="${ECHOED:-$(q "$BENCH_DIR/$LABEL-probe.jsonl" light echoed)}"
+case "$echoed_now" in
+  *0D*) ct_default=0D ;;
+  *15*) ct_default=15 ;;
+  *)    ct_default=15 ;;
+esac
+suggest CT_SUBMODE "Sub-mode to try white in (0D or 15):" "$ct_default"
 connected ct verify submode "$CT_SUBMODE" ct 4300 sleep 1 ct 6700 sleep 1
-step "Did the light go warm then cool white?"
-record CT_RESULT "ct verdicts and what you saw (e.g. 'echoed 4300/6700, visibly white' or 'no reply, no change'):"
+T="$BENCH_DIR/$LABEL-ct.jsonl"
+ct_log="4300 K $(q "$T" verify ct 4300 | sed 's/yes/echoed/;s/no/not echoed/'), 6700 K $(q "$T" verify ct 6700 | sed 's/yes/echoed/;s/no/not echoed/')"
+step "Did the light go warm white, then cool white?"
+suggest CT_RESULT "What the light did (Enter keeps the log's reading; add what you saw):" "log: $ct_log"
 
 # ── 7 ─────────────────────────────────────────────────────────────────────
 stage "Scene codes"
@@ -382,8 +444,9 @@ say "The legacy single-byte scene IDs, two seconds apart. RGBIC firmware"
 say "usually needs an upload first and ignores most of these; that is a result too."
 if confirm "Run the scene list? It leaves the light in a scene."; then
   connected scenes verify scene 0 sleep 2 scene 1 sleep 2 scene 4 sleep 2 scene 5 sleep 2 scene 7 sleep 2 scene 8 sleep 2 scene 9 sleep 2 scene 15 sleep 2
-  step "Which IDs visibly changed the effect?"
-  record SCENES_ACCEPTED "Scene IDs that ran (e.g. '0,1,4,5' or 'none'):"
+  scenes_log="$(q "$BENCH_DIR/$LABEL-scenes.jsonl" echoed scene)"
+  step "Which IDs visibly changed the effect? (the log only shows which the light reported back)"
+  suggest SCENES_ACCEPTED "Scene IDs that ran (e.g. '0,1,4,5' or 'none'):" "${scenes_log:-none}"
 else
   note "scenes skipped"
   SKIPPED+=("scene codes for $LABEL")
@@ -402,10 +465,13 @@ if confirm "Pair this light with the app now?"; then
   pause "Paired, red, app closed?"
   btmon_stop
   connected after-pair census
-  record FIRMWARE_AFTER_PAIR "firmware after pairing (same, or the new version):"
-  record SUBMODE_AFTER_RED "submode_name after the app set red (names the app's dialect):"
+  A="$BENCH_DIR/$LABEL-after-pair.jsonl"
+  fact FIRMWARE_AFTER_PAIR "firmware after pairing" "$(q "$A" light firmware)"
+  fact SUBMODE_AFTER_RED "mode the app left (its dialect)" "$(q "$A" light submode_name)"
   connected after-pair-write verify on rgb 18 52 86 sleep 1 off
-  record WRITES_AFTER_PAIR "Do our writes still work after pairing? (yes / no / partial):"
+  step "Did the light come on dark blue, then go off?"
+  suggest WRITES_AFTER_PAIR "Do our writes still work after pairing? (yes / no / partial):" \
+    "$(q "$BENCH_DIR/$LABEL-after-pair-write.jsonl" verify rgb)"
   if [[ "${WRITES_AFTER_PAIR,,}" == n* ]]; then
     say "A light that stopped obeying may need its 8-byte secret (33 B2) first."
     say "Find it in $BENCH_DIR/$LABEL-pair.btsnoop (Wireshark filter: btatt.value[0:2] == 33:b2)"

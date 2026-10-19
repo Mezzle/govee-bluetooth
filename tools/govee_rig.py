@@ -685,6 +685,14 @@ async def run_query(link: RigLink, which: str) -> Any:
     return await link.query(build(), cmd)
 
 
+def _jsonable(value: Any) -> Any:
+    if isinstance(value, (tuple, list)):
+        return [_jsonable(v) for v in value]
+    if isinstance(value, bytes):
+        return value.hex()
+    return value
+
+
 async def run_actions(link: RigLink, actions: list[Action], verify: bool) -> list[str]:
     """Execute actions in order. Returns the verify verdict lines."""
     verdicts: list[str] = []
@@ -710,6 +718,19 @@ async def run_actions(link: RigLink, actions: list[Action], verify: bool) -> lis
                 verdict = await verify_action(link, action)
                 print(f"   => {verdict}")
                 verdicts.append(verdict)
+                link.log.write_line(
+                    {
+                        "summary": "verify",
+                        "schema": census.SCHEMA,
+                        "source": "pi",
+                        "at": now_iso(),
+                        "address": link.address,
+                        "action": action.name,
+                        "args": _jsonable(action.args),
+                        "echoed": ": ECHOED" in verdict or "SUB-MODE ECHOED" in verdict,
+                        "verdict": verdict,
+                    }
+                )
     return verdicts
 
 
@@ -803,6 +824,10 @@ async def resolve_settings(args: argparse.Namespace) -> Settings:
 
 async def cmd_scan(args: argparse.Namespace) -> None:
     kwargs = {"adapter": args.adapter} if args.adapter else {}
+    log = None
+    if args.log:
+        log = FrameLog(path=args.log)
+        log.session(adapter=args.adapter or "default", command="scan")
     print(f"scanning for {args.seconds}s ...", flush=True)
     LIGHTS.sweep((0, 200, 255))
     try:
@@ -819,6 +844,23 @@ async def cmd_scan(args: argparse.Namespace) -> None:
             continue
         profile = models.table_profile_for(model) if model else None
         enc = "?" if mfr is None or mfr.encrypted is None else ("yes" if mfr.encrypted else "no")
+        if log is not None and govee:
+            log.write_line(
+                {
+                    "summary": "advertisement",
+                    "schema": census.SCHEMA,
+                    "source": "pi",
+                    "at": now_iso(),
+                    "address": device.address.upper(),
+                    "name": name or "",
+                    "model": model,
+                    "known_model": bool(model and model in models.KNOWN_MODELS),
+                    "pact": mfr.pact if mfr else None,
+                    "flags": mfr.flags if mfr else None,
+                    "encrypted": mfr.encrypted if mfr else None,
+                    "rssi": adv.rssi,
+                }
+            )
         rows.append(
             (
                 device.address,
@@ -1041,6 +1083,7 @@ async def cmd_census(args: argparse.Namespace) -> None:
         )
         if link.bgc is not None:
             record["bgc"] = link.bgc.hex()
+        record["verdict"] = f"{verdict.family} / {verdict.security} / {verdict.confidence}"
         log.write_line(record)
     print("\ncensus result:")
     for key in ("firmware", "hardware", "power", "brightness", "submode", "submode_name", "ic_count", "segments",

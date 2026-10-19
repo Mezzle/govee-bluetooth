@@ -183,7 +183,14 @@ def ingest_records(
             dev.observations.append(obs)
             dev.sources.add("manual")
             continue
-        if kind == "dump":
+        if kind == "advertisement":
+            dev = evidence.device(str(record.get("address", "?")))
+            if record.get("name"):
+                dev.names.add(str(record["name"]))
+            if record.get("model"):
+                dev.models.add(str(record["model"]).upper())
+            continue
+        if kind in ("dump", "verify"):
             continue
         if "frame" in record and "direction" in record:
             src = _guess_source(record, source or current_source)
