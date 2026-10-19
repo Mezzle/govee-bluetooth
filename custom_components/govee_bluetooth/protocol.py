@@ -23,6 +23,14 @@ CMD_POWER = 0x01
 CMD_BRIGHTNESS = 0x04
 CMD_MODE = 0x05
 CMD_VERSION = 0x06
+# Read-only capability and identity commands (docs/govee-ble-protocol.md 6.6).
+CMD_DEVICE_INFO = 0x07  # ``AA 07 <sel>``; 03 = hardware version ASCII
+CMD_LIGHT_COUNT = 0x0F  # ``AA 0F`` -> bulb / light count
+CMD_IC_COUNT = 0x40  # ``AA 40`` -> ic u16 BE, segment count u8
+CMD_SEGMENT_COLORS = 0xA5  # ``AA A5 <group>`` -> N x [bri R G B]
+CMD_SECRET_READ = 0xB1  # ``AA B1`` -> 01 + 8-byte pairing secret (unbound lights only)
+CMD_SECRET_WRITE = 0xB2  # ``33 B2 <8 bytes>`` authorises a session on secret families
+INFO_HARDWARE = 0x03
 
 SUBMODE_MUSIC = 0x03
 SUBMODE_SCENE = 0x04
@@ -214,6 +222,74 @@ def version_query_frame() -> bytes:
     return build_frame(CMD_VERSION, frame_type=TYPE_READ)
 
 
+def hardware_query_frame() -> bytes:
+    """``AA 07 03``: hardware version string."""
+    return build_frame(CMD_DEVICE_INFO, [INFO_HARDWARE], frame_type=TYPE_READ)
+
+
+def ic_count_query_frame() -> bytes:
+    """``AA 40``: IC count and segment count, the one live capability read the app does."""
+    return build_frame(CMD_IC_COUNT, frame_type=TYPE_READ)
+
+
+def light_count_query_frame() -> bytes:
+    """``AA 0F``: light / bulb count (string lights, some dreamcolor strips)."""
+    return build_frame(CMD_LIGHT_COUNT, frame_type=TYPE_READ)
+
+
+def secret_query_frame() -> bytes:
+    """``AA B1``: the pairing secret; only an unbound light answers."""
+    return build_frame(CMD_SECRET_READ, frame_type=TYPE_READ)
+
+
+def segment_colors_query_frame(group: int = 1) -> bytes:
+    """``AA A5 <group>``: one page of per-segment colours."""
+    if not 0 <= group <= 0xFF:
+        raise ValueError("Segment group must fit in one byte")
+    return build_frame(CMD_SEGMENT_COLORS, [group], frame_type=TYPE_READ)
+
+
+# Commands whose reply echoes the selector byte, so a reply must match on it.
+_SELECTOR_ECHO_COMMANDS = frozenset({CMD_DEVICE_INFO, CMD_SEGMENT_COLORS, 0xA2})
+
+
+def reply_matches(request: bytes, reply: bytes) -> bool:
+    """True if ``reply`` is the ``AA`` answer to ``request`` (same command, same selector where echoed)."""
+    if len(reply) < 3 or reply[0] != TYPE_READ or reply[1] != request[1]:
+        return False
+    if request[1] in _SELECTOR_ECHO_COMMANDS:
+        return reply[2] == request[2]
+    return True
+
+
+# ---------------------------------------------------------------------------
+# Evidence hygiene
+# ---------------------------------------------------------------------------
+
+
+def frame_has_secret(frame: bytes) -> bool:
+    """True for an ``AA B1 01 <secret>`` reply or a ``33 B2 <secret>`` write."""
+    if len(frame) < 3:
+        return False
+    if frame[0] == TYPE_READ and frame[1] == CMD_SECRET_READ and frame[2] == 0x01:
+        return True
+    return frame[0] == TYPE_WRITE and frame[1] == CMD_SECRET_WRITE
+
+
+def redact_frame(frame: bytes) -> tuple[bytes, bool]:
+    """``(frame, redacted)``: the secret bytes zeroed and the checksum recomputed.
+
+    Everything else is returned unchanged, so logs stay parseable and a
+    consumer can still tell *that* a secret was exchanged.
+    """
+    frame = bytes(frame)
+    if not frame_has_secret(frame) or len(frame) != FRAME_LENGTH:
+        return frame, False
+    start = 3 if frame[0] == TYPE_READ else 2
+    body = frame[:start] + bytes(FRAME_LENGTH - 1 - start)
+    return body + bytes([checksum(body)]), True
+
+
 # ---------------------------------------------------------------------------
 # Reply parsing
 # ---------------------------------------------------------------------------
@@ -235,6 +311,14 @@ class ModeReport:
 
 
 @dataclass(slots=True)
+class SegmentRecord:
+    """One ``[bri R G B]`` record of an ``AA A5`` page."""
+
+    brightness: int
+    rgb: tuple[int, int, int]
+
+
+@dataclass(slots=True)
 class Reply:
     """One decoded frame from the status characteristic."""
 
@@ -243,6 +327,15 @@ class Reply:
     brightness_level: int | None = None
     mode: ModeReport | None = None
     version: str | None = None
+    hardware: str | None = None  # ``AA 07 03``
+    ic_count: int | None = None  # ``AA 40``
+    segments: int | None = None  # ``AA 40``
+    light_count: int | None = None  # ``AA 0F``
+    secret_present: bool | None = None  # ``AA B1``: True when 01 + 8 bytes followed
+    secret: bytes | None = None  # the 8 bytes; keep it out of anything shared
+    segment_group: int | None = None  # ``AA A5``
+    segment_records: list[SegmentRecord] | None = None  # ``AA A5``
+    raw_selector: int | None = None  # byte 2, for commands that echo one
 
 
 def parse_reply(frame: bytes) -> Reply | None:
@@ -263,7 +356,56 @@ def parse_reply(frame: bytes) -> Reply | None:
     if command == CMD_VERSION:
         text = payload.split(b"\x00", 1)[0].decode("ascii", errors="replace").strip()
         return Reply(command, version=text or None)
+    if command == CMD_DEVICE_INFO:
+        reply = Reply(command, raw_selector=payload[0])
+        if payload[0] == INFO_HARDWARE:
+            reply.hardware = _ascii(payload[1:]) or None
+        return reply
+    if command == CMD_IC_COUNT:
+        return Reply(command, ic_count=(payload[0] << 8) | payload[1], segments=payload[2])
+    if command == CMD_LIGHT_COUNT:
+        return Reply(command, light_count=payload[0])
+    if command == CMD_SECRET_READ:
+        present = payload[0] == 0x01
+        return Reply(
+            command, secret_present=present, secret=bytes(payload[1:9]) if present else None
+        )
+    if command == CMD_SEGMENT_COLORS:
+        return Reply(
+            command,
+            segment_group=payload[0],
+            raw_selector=payload[0],
+            segment_records=_segment_records(payload[1:]),
+        )
     return Reply(command)
+
+
+def _ascii(data: bytes) -> str:
+    """Printable ASCII up to the first NUL or non-printable byte, trailing spaces dropped."""
+    out = []
+    for byte in data:
+        if byte == 0 or not 0x20 <= byte <= 0x7E:
+            break
+        out.append(chr(byte))
+    return "".join(out).rstrip()
+
+
+def _segment_records(data: bytes) -> list[SegmentRecord]:
+    """``[bri R G B]`` x N; a page of all zeros means "no records"."""
+    records = []
+    for i in range(0, len(data) - 3, 4):
+        bri, r, g, b = data[i : i + 4]
+        if (bri, r, g, b) == (0, 0, 0, 0):
+            break
+        records.append(SegmentRecord(bri, (r, g, b)))
+    return records
+
+
+def segment_page_has(reply: Reply | None, rgb: tuple[int, int, int]) -> bool:
+    """True if any record of an ``AA A5`` page carries ``rgb``."""
+    if reply is None or not reply.segment_records:
+        return False
+    return any(record.rgb == tuple(rgb) for record in reply.segment_records)
 
 
 def _parse_mode(payload: bytes) -> ModeReport:
