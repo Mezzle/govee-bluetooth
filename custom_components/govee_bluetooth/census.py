@@ -13,6 +13,7 @@ the observations that support it, and the report generator renders that.
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 
@@ -31,11 +32,24 @@ SILENT_AFTER = 3
 # One probe colour per dialect; none is a kelvin-tint colour, no channel is
 # zero or full. Same values as govee_probe_color() in Dance Party.
 PROBE_COLORS: dict[int, tuple[int, int, int]] = {
-    protocol.SUBMODE_COLOR_LEGACY: (0x12, 0x34, 0x56),
-    protocol.SUBMODE_COLOR_DREAMCOLOR: (0x15, 0x37, 0x59),
-    protocol.SUBMODE_COLOR_RGBWW: (0x13, 0x35, 0x57),
-    protocol.SUBMODE_COLOR_RGBIC: (0x14, 0x36, 0x58),
+    protocol.SUBMODE_COLOR_LEGACY: (0xC8, 0x1E, 0x28),  # red
+    protocol.SUBMODE_COLOR_DREAMCOLOR: (0x1E, 0xC8, 0x3C),  # green
+    protocol.SUBMODE_COLOR_RGBWW: (0x28, 0x3C, 0xC8),  # blue
+    protocol.SUBMODE_COLOR_RGBIC: (0xB4, 0x1E, 0xC8),  # magenta
 }
+# The first H6006 session used four near-identical dark blues: once one
+# dialect landed, a later one could not be seen to work. These are
+# saturated, distinct to the eye and named in the operator's question.
+PROBE_COLOR_NAMES: dict[int, str] = {
+    protocol.SUBMODE_COLOR_LEGACY: "red",
+    protocol.SUBMODE_COLOR_DREAMCOLOR: "green",
+    protocol.SUBMODE_COLOR_RGBWW: "blue",
+    protocol.SUBMODE_COLOR_RGBIC: "magenta",
+}
+# After going back to the pre-probe state between dialects, wait this long
+# so the operator sees the baseline and the reset's own write ack arrives
+# before the next probe write is attributed.
+RESET_SETTLE_S = 0.6
 PROBE_ORDER: tuple[int, ...] = (
     protocol.SUBMODE_COLOR_LEGACY,
     protocol.SUBMODE_COLOR_DREAMCOLOR,
@@ -198,6 +212,18 @@ def _mode_rgb(mode: protocol.ModeReport | None) -> tuple[int, int, int] | None:
     return mode.rgb
 
 
+def _restore_frame(result: CensusResult) -> bytes | None:
+    """The pre-probe 0x02 / 0x0D state as a write, or None when it cannot be rewritten.
+
+    The reported body is written back verbatim: an RGB write would turn a
+    white (kelvin) 0x0D state into RGB 00 00 00, i.e. dark. The H6006
+    reported 0D 000000 0A8C 000000 (2700 K white) on the bench.
+    """
+    if result.mode is None or _mode_rgb(result.mode) is None:
+        return None
+    return protocol.build_frame(protocol.CMD_MODE, [result.mode.submode, *result.mode.body])
+
+
 def _ack_since(link: ProbeLink, start: int, command: int) -> str:
     ack_log = getattr(link, "ack_log", None)
     if ack_log is None:
@@ -250,14 +276,16 @@ async def _probe(
         if echoed:
             result.echoed.append(submode)
         result.probe_acks[submode] = _ack_since(link, acks_before, protocol.CMD_MODE)
+        if submode != PROBE_ORDER[-1] and _restore_frame(result) is not None:
+            # Back to the starting state, so the next dialect's change is
+            # judged against the same baseline (by eye and by read-back).
+            await link.write(_restore_frame(result))
+            await asyncio.sleep(RESET_SETTLE_S)
+            last_mode_rgb = _mode_rgb(result.mode)
 
-    if result.mode is not None and _mode_rgb(result.mode) is not None:
-        # Write the reported body back verbatim: an RGB write would turn a
-        # white (kelvin) 0x0D state into RGB 00 00 00, i.e. dark. The H6006
-        # reported 0D 000000 0A8C 000000 (2700 K white) on the bench.
-        await link.write(
-            protocol.build_frame(protocol.CMD_MODE, [result.mode.submode, *result.mode.body])
-        )
+    restore = _restore_frame(result)
+    if restore is not None and result.mode is not None:
+        await link.write(restore)
         result.restored = "full"
         if result.mode.submode not in result.echoed:
             result.restore_note = "colour rewritten in the reported dialect, which did not echo"

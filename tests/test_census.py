@@ -106,6 +106,12 @@ class FakeLight:
         return None
 
 
+@pytest.fixture(autouse=True)
+def _no_reset_wait(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The between-dialect baseline pause is for human eyes, not tests."""
+    monkeypatch.setattr(census, "RESET_SETTLE_S", 0)
+
+
 H617A_ADV = parse_raw(bytes.fromhex("0388ec000a0101"))
 ENCRYPTED_ADV = parse_raw(bytes.fromhex("4388ec00010100"))
 
@@ -356,3 +362,29 @@ async def test_quitting_the_questions_still_restores() -> None:
     result = await census.async_census(light, probe_writes=True, ask=ask)
     assert result.aborted and result.observed == {0x02: "no"}
     assert result.restored == "full" and light.power is False
+
+
+def test_probe_colours_are_far_apart_to_the_eye() -> None:
+    colours = list(census.PROBE_COLORS.values())
+    for i, a in enumerate(colours):
+        for b in colours[i + 1 :]:
+            assert sum(abs(x - y) for x, y in zip(a, b, strict=True)) > 150
+    assert set(census.PROBE_COLOR_NAMES) == set(census.PROBE_COLORS)
+
+
+async def test_probe_goes_back_to_the_baseline_between_dialects(monkeypatch) -> None:
+    monkeypatch.setattr(census, "RESET_SETTLE_S", 0)
+    light = FakeLight(speaks=0x0D)
+    light.raw_mode_body = [0, 0, 0, 0x0A, 0x8C, 0, 0, 0]
+    light.raw_mode_submode = 0x0D
+    seen_before_write: list[tuple[int, ...]] = []
+
+    async def ask(submode: int, rgb: tuple[int, int, int]) -> str | None:
+        # The write just before this probe write was the reset to 2700 K white.
+        if submode != census.PROBE_ORDER[0]:
+            seen_before_write.append(tuple(light.writes[-2][2:8]))
+        return "yes" if submode == 0x0D else "no"
+
+    result = await census.async_census(light, probe_writes=True, ask=ask)
+    assert seen_before_write == [(0x0D, 0, 0, 0, 0x0A, 0x8C)] * 3
+    assert result.echoed == [0x0D] and result.restored == "full"

@@ -343,11 +343,12 @@ record SUBMODE_BEFORE "submode_name before any write (e.g. colour15, scene, '?')
 
 # ── 5 ─────────────────────────────────────────────────────────────────────
 stage "Probe census: one dialect at a time"
-say "Writes a distinct dark colour in each of four dialects, one at a time,"
-say "and stops after each to ask whether the light changed. Answer y (it"
-say "changed to a dark blue), n (no change), w (changed, but to something"
-say "else) or p (partly), or q to stop; the light is restored either way."
-say "Each answer goes into the evidence log as an observation."
+say "Writes one colour per dialect, one at a time: 0x02 RED, 0x0B GREEN,"
+say "0x0D BLUE, 0x15 MAGENTA. After each it asks whether the light turned"
+say "that colour: y, n (no change), w (changed to some other colour), p"
+say "(partly), or q to stop. Where it can, it puts the light back to how it"
+say "started between dialects, so each one is judged from the same baseline."
+say "The light is restored at the end either way; every answer is logged."
 if confirm "Run the probe? It changes the light's colour and may not restore a scene."; then
   connected probe census --probe --ask
   step "From the 'census result' block above:"

@@ -528,6 +528,10 @@ class RigLink:
             self.log.record("rx", frame, "reply")
             future.set_result(reply)
             return
+        if reply.command == protocol.CMD_POWER and request is None:
+            # The answer to an AA 01 heartbeat: the light's power state, not news.
+            self.log.record("rx", frame, "heartbeat")
+            return
         self.log.record("rx", frame, "unsolicited")
         self.unsolicited.append(reply)
 
@@ -932,13 +936,16 @@ def make_asker(link: RigLink, address: str):  # type: ignore[no-untyped-def]
 
     async def ask(submode: int, rgb: tuple[int, int, int]) -> str | None:
         hex_rgb = " ".join(f"{c:02X}" for c in rgb)
+        colour = census.PROBE_COLOR_NAMES.get(submode, hex_rgb)
         print(
-            f"\n  >>> wrote {PROBE_DESCRIPTIONS.get(submode, hex(submode))}: dark colour {hex_rgb}"
+            f"\n  >>> wrote {PROBE_DESCRIPTIONS.get(submode, hex(submode))}: "
+            f"{colour.upper()} ({hex_rgb})"
         )
         while True:
             raw = await prompt_keeping_alive(
                 link,
-                "  >>> Did the light change? [y]es / [n]o / [w]rong colour / [p]artial / [q]uit: ",
+                f"  >>> Did the light turn {colour}? [y]es / [n]o change / [w]rong colour / "
+                "[p]artly / [q]uit: ",
             )
             if raw is None:
                 return None
@@ -957,7 +964,7 @@ def make_asker(link: RigLink, address: str):  # type: ignore[no-untyped-def]
                 "source": "manual",
                 "at": now_iso(),
                 "address": address,
-                "observed": f"probe 0x{submode:02X} wrote {hex_rgb}: {answer}",
+                "observed": f"probe 0x{submode:02X} wrote {colour} ({hex_rgb}): {answer}",
                 "capability": "rgb",
                 "outcome": OUTCOMES[answer],
                 "dialect": f"0x{submode:02X}",
