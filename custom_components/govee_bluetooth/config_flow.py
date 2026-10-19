@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from datetime import UTC, datetime
 from typing import Any
 
 import voluptuous as vol
@@ -43,11 +44,13 @@ from .const import (
     CONF_MODEL,
     CONF_NAME,
     CONF_POLL_INTERVAL,
+    CONF_PROBE_HISTORY,
     DEFAULT_IDLE_DISCONNECT,
     DEFAULT_POLL_INTERVAL,
     DOMAIN,
     MAX_IDLE_DISCONNECT,
     MIN_POLL_INTERVAL,
+    PROBE_HISTORY_LIMIT,
 )
 from .device import GoveeBleDevice, GoveeConnectionError
 from .models import (
@@ -109,6 +112,9 @@ class _ProbeRunner:
         self.safe_result: probe.SafeProbeResult | None = None
         self.active_result: probe.ActiveProbeResult | None = None
         self.probe_error: str | None = None
+        # Every probe run in this flow, newest last, each with the raw frames
+        # exchanged. Ends up in the config entry for the diagnostics download.
+        self.probe_history: list[dict[str, Any]] = []
 
     def _device(self, address: str, name: str, model: str) -> GoveeBleDevice:
         return GoveeBleDevice(self.hass, address, name, profile_for(model), idle_disconnect=0)
@@ -123,6 +129,7 @@ class _ProbeRunner:
             self.probe_error = str(err)
         finally:
             await device.async_disconnect()
+        self._record_probe(self._safe_record(model, device))
 
     async def _run_active(self, address: str, name: str, model: str) -> None:
         self.active_result = None
@@ -135,6 +142,54 @@ class _ProbeRunner:
             self.probe_error = str(err)
         finally:
             await device.async_disconnect()
+        self._record_probe(self._active_record(model, device))
+
+    # -- probe history -------------------------------------------------------
+
+    def _safe_record(self, model: str, device: GoveeBleDevice) -> dict[str, Any]:
+        result = self.safe_result
+        record: dict[str, Any] = {
+            "at": datetime.now(UTC).isoformat(timespec="seconds"),
+            "kind": "read_only",
+            "model": model,
+            "firmware": result.firmware if result else None,
+            "outcome": result.outcome if result else "error",
+            "observed_submode": result.observed_submode if result else None,
+            "detected_submode": result.detected_submode if result else None,
+            "error": self.probe_error,
+            "frames": device.frames,
+        }
+        return record
+
+    def _active_record(self, model: str, device: GoveeBleDevice) -> dict[str, Any]:
+        result = self.active_result
+        if result is None:
+            outcome = "error"
+        elif result.detected_submode is not None:
+            outcome = "detected"
+        elif result.error:
+            outcome = "disconnected"
+        else:
+            outcome = "no_echo"
+        return {
+            "at": datetime.now(UTC).isoformat(timespec="seconds"),
+            "kind": "active",
+            "model": model,
+            "firmware": result.recorded.firmware if result else None,
+            "outcome": outcome,
+            "observed_submode": result.recorded.observed_submode if result else None,
+            "detected_submode": result.detected_submode if result else None,
+            "attempted": list(result.attempted) if result else [],
+            "test_kelvin": result.test_kelvin if result else None,
+            "restored": result.restored if result else None,
+            "restore_note": result.restore_note if result else None,
+            "error": (result.error if result else None) or self.probe_error,
+            "frames": device.frames,
+        }
+
+    def _record_probe(self, record: dict[str, Any]) -> None:
+        """Keep the record for the entry. The options flow persists it at once."""
+        self.probe_history = [*self.probe_history, record][-PROBE_HISTORY_LIMIT:]
 
     def _start(self, coro: Any) -> asyncio.Task[Any]:
         if self._task is None:
@@ -450,6 +505,8 @@ class GoveeBluetoothConfigFlow(ConfigFlow, _ProbeRunner, domain=DOMAIN):
             data[CONF_DETECTED_SUBMODE] = self._detected
         if self._firmware:
             data[CONF_FIRMWARE] = self._firmware
+        if self.probe_history:
+            data[CONF_PROBE_HISTORY] = self.probe_history
         return self.async_create_entry(title=self._name, data=data)
 
     @staticmethod
@@ -684,4 +741,15 @@ class GoveeOptionsFlow(OptionsFlow, _ProbeRunner):
         if firmware:
             data[CONF_FIRMWARE] = firmware
         _LOGGER.info("%s: probe detected colour sub-mode %#04x", self._name, submode)
+        self.hass.config_entries.async_update_entry(self.config_entry, data=data)
+
+    def _record_probe(self, record: dict[str, Any]) -> None:
+        """Persist the run straight away, whatever its outcome.
+
+        A failed or inconclusive probe is exactly the one whose frames are
+        worth having in the diagnostics download.
+        """
+        super()._record_probe(record)
+        history = [*self.config_entry.data.get(CONF_PROBE_HISTORY, []), record]
+        data = {**self.config_entry.data, CONF_PROBE_HISTORY: history[-PROBE_HISTORY_LIMIT:]}
         self.hass.config_entries.async_update_entry(self.config_entry, data=data)

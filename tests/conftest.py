@@ -115,7 +115,11 @@ class FakeGoveeClient:
                 self.is_connected = False
                 raise BleakError("link dropped")
             if frame[1] == protocol.CMD_MODE and frame[2] == self.speaks:
-                self.set_mode(frame[2], frame[3:6])
+                if frame[2] == protocol.SUBMODE_COLOR_RGBIC:
+                    # ``33 05 15 01 FF FF FF kHi kLo ...`` -> ``AA 05 15 01 kHi kLo``
+                    self.set_mode(frame[2], (frame[3], frame[7], frame[8]))
+                else:
+                    self.set_mode(frame[2], frame[3:6])
         if frame[0] == protocol.TYPE_READ and self._notify is not None:
             reply = self.replies.get(frame[1])
             if reply is not None:

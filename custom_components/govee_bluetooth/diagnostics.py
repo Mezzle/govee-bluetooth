@@ -9,7 +9,7 @@ from homeassistant.components import bluetooth
 from homeassistant.core import HomeAssistant
 
 from . import GoveeConfigEntry
-from .const import CONF_COLOR_SUBMODE, CONF_DETECTED_SUBMODE, CONF_MODEL
+from .const import CONF_COLOR_SUBMODE, CONF_DETECTED_SUBMODE, CONF_MODEL, CONF_PROBE_HISTORY
 from .models import table_profile_for
 
 
@@ -33,8 +33,11 @@ async def async_get_config_entry_diagnostics(
 ) -> dict[str, Any]:
     coordinator = entry.runtime_data
     device = coordinator.device
+    # The probe history is large (it carries raw frames); surface it once at
+    # the top level rather than buried in the entry data.
+    entry_data = {k: v for k, v in entry.data.items() if k != CONF_PROBE_HISTORY}
     return {
-        "entry": {"data": dict(entry.data), "options": dict(entry.options)},
+        "entry": {"data": entry_data, "options": dict(entry.options)},
         "profile": asdict(device.profile),
         "color_submode": {
             "static_table": table_profile_for(entry.data.get(CONF_MODEL)).color_submode,
@@ -50,4 +53,10 @@ async def async_get_config_entry_diagnostics(
             "reachability": _reachability(hass, device.address),
         },
         "last_update_success": coordinator.last_update_success,
+        # Raw frames, oldest first: "tx" is what this integration sent, "rx"
+        # what the light answered. Hex, with the 0x33/0xAA type byte first.
+        "frames": device.frames,
+        # Dialect probe runs from setup or Configure, newest last, with the
+        # frames each one exchanged over its own short-lived connection.
+        "probe_history": list(entry.data.get(CONF_PROBE_HISTORY, [])),
     }

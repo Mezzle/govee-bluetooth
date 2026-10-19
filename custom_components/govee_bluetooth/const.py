@@ -14,6 +14,8 @@ CONF_BRIGHTNESS_SCALE: Final = "brightness_scale"
 CONF_COLOR_SUBMODE: Final = "color_submode"  # manual override (options)
 CONF_DETECTED_SUBMODE: Final = "detected_color_submode"  # learned from the light (data)
 CONF_FIRMWARE: Final = "firmware"
+CONF_PROBE_HISTORY: Final = "probe_history"  # last few probe runs with their raw frames (data)
+PROBE_HISTORY_LIMIT: Final = 3
 CONF_POLL_INTERVAL: Final = "poll_interval"
 CONF_IDLE_DISCONNECT: Final = "idle_disconnect"
 

@@ -89,9 +89,13 @@ caught the H6181.
 **Step 2, active, opt-in only.** This writes a test colour to the light in
 each candidate sub-mode (table guess first) and reads the mode back. A
 sub-mode is accepted only when the reply echoes both the sub-mode byte and the
-RGB that was sent; firmware that does not understand a frame usually ignores
+value that was sent; firmware that does not understand a frame usually ignores
 it and keeps reporting the previous mode, so the sub-mode byte alone proves
-nothing. The consent screen states the risk, and so does this README:
+nothing. For `0x02` and `0x0D` the echoed value is the test RGB. The `0x15`
+reply carries no RGB, only a colour temperature, so for `0x15` the test write
+is a white at 4300 K (or 6700 K if the light already reports 4300 K) and the
+echo is that kelvin. The consent screen states the risk, and so does this
+README:
 
 - the light will change colour briefly;
 - writes in an unsupported format have not been seen to damage either tested
@@ -102,9 +106,17 @@ nothing. The consent screen states the risk, and so does this README:
 The probe records power, brightness and mode first and restores what it can
 afterwards. It never sends scene IDs, never writes brightness above 100, and
 if the connection drops mid-sequence it stops, reports the partial result and
-does not retry. Only `0x02` and `0x0D` are ever written: the `0x15` mode reply
-carries no RGB, so an `0x15` write could never be confirmed and is not worth
-the risk. `0x15` is still detected by step 1 when the light is already in it.
+does not retry. The `0x15` kelvin echo is taken from the decompiled app's
+reply parser and has not yet been confirmed on an RGBIC strip; the probe
+history in the diagnostics download is how that gets confirmed.
+
+**Every probe run is kept.** The last three runs from setup or **Configure**,
+successful or not, are stored on the config entry with the raw frames they
+exchanged, and appear under `probe_history` in the diagnostics download
+(device page → three dots → *Download diagnostics*). The same download also
+carries the last 200 frames the running integration sent and received under
+`frames`. For a model that is not yet verified, that file is what to attach
+to an issue; no debug logging needed.
 
 The brightness scale is **not** probed; the only way to tell 0-255 from 0-100
 is to write above 100, which the H6181 silently ignores. It is derived from
@@ -140,6 +152,7 @@ Discovered automatically (advertised as `ihoment_`, `Govee_`, `GBK_` or `GVH` + 
 | H6181 | Verified on hardware (firmware 2.03.11) through an ESPHome proxy: power, brightness, RGB, colour temperature, scenes and read-back. Uses the 0x0D colour scheme and 0-100 brightness, unlike the rest of this table. |
 | H7020, H7021 (outdoor string lights) | Same legacy colour dialect per community captures. Untested on hardware. |
 | H6143, H6144, H619A, H619B, H619C, H619E, H619Z, H61A0, H61A1, H61A2, H61E1 (RGBIC strips) | Segmented `0x15` colour dialect with a whole-strip mask, brightness 0-100, per the decompiled Govee app. Whole-strip colour and white only; no scenes yet. Untested on hardware. |
+| H61B5 (RGBIC strip with covers), H61E5 (COB strip Pro, RGBIC+W) | Listed as `0x15` on the strength of their siblings (H61B2, H61E0, H61E1 in community BLE captures) and the H61E5's CSA listing as an H61E1 variant. No BLE capture of either exists yet. Untested on hardware. |
 | H6199 (RGBIC TV backlight) | Same `0x15` dialect. Untested on hardware. |
 | H6052, H6056, H6059, H6061, H6062, H6065, H6072, H6076 (RGBIC light bars, lamps and panels) | Same `0x15` dialect. Untested on hardware. |
 
@@ -196,7 +209,10 @@ decompiled-app protocol reference in Brady-Woods/govee-ble-local.
   from Configure with the light showing a plain colour, or the active probe.
 - **Light unresponsive after the active probe**: power-cycle it, then reload
   the config entry.
-- **Enable debug logging** to see every frame:
+- **Reporting an unverified model**: download the diagnostics from the device
+  page and attach the file. It holds the model, firmware, dialect in use, the
+  last 200 frames and every recent probe run with its frames.
+- **Enable debug logging** to see every frame as it happens:
 
   ```yaml
   logger:

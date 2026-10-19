@@ -625,6 +625,30 @@
     },
     {
       "local_name": "GVHH6076*"
+    },
+    {
+      "local_name": "ihoment_H61B5*"
+    },
+    {
+      "local_name": "Govee_H61B5*"
+    },
+    {
+      "local_name": "GBK_H61B5*"
+    },
+    {
+      "local_name": "GVHH61B5*"
+    },
+    {
+      "local_name": "ihoment_H61E5*"
+    },
+    {
+      "local_name": "Govee_H61E5*"
+    },
+    {
+      "local_name": "GBK_H61E5*"
+    },
+    {
+      "local_name": "GVHH61E5*"
     }
   ],
   "codeowners": [
