@@ -1031,6 +1031,99 @@ def _manufacturer_data(device: Any) -> dict[int, bytes] | None:
     return mfr if isinstance(mfr, dict) else None
 
 
+SCALE_STEPS = (
+    # (level, question or None, what each scale predicts)
+    (25, None, "dim on either scale (25% or 10%)"),
+    (100, "Is it at or near FULL brightness now?", "full on a 0-100 light, about 40% on a 0-255 light"),
+    (255, "Did it get CLEARLY BRIGHTER again than a moment ago?", "brighter on a 0-255 light, no change on 0-100"),
+)  # fmt: skip
+
+
+def scale_from(
+    stored_255: bool | None, near_full_at_100: str | None, brighter_at_255: str | None
+) -> tuple[str | None, str]:
+    """``(scale, reason)`` from the read-backs and the two answers; scale None when they disagree."""
+    eyes_255 = near_full_at_100 == "no" and brighter_at_255 == "yes"
+    eyes_100 = near_full_at_100 == "yes" and brighter_at_255 == "no"
+    if eyes_255:
+        return "255", "100 looked partial and 255 brighter" + (
+            ", and the light stored 255" if stored_255 else ""
+        )
+    if eyes_100:
+        return "100", "100 looked full and 255 changed nothing" + (
+            "" if stored_255 is False else " (the light did store 255: it clamps when rendering)"
+        )
+    if near_full_at_100 is None and brighter_at_255 is None and stored_255 is not None:
+        return ("255" if stored_255 else "100"), "read-back only: " + (
+            "the light stored 255" if stored_255 else "the light did not store 255"
+        )
+    return None, "the answers and the read-back do not agree; repeat the test"
+
+
+async def cmd_scale(args: argparse.Namespace) -> None:
+    """Brightness scale, one step at a time, with a question per step."""
+    settings = await resolve_settings(args)
+    log = FrameLog(
+        path=args.log,
+        address=args.address,
+        quiet_heartbeat=not args.show_heartbeat,
+        keep_secrets=args.keep_secrets,
+    )
+    log.session(adapter=args.adapter or "default", command="scale", cipher=args.cipher)
+    answers: dict[int, str | None] = {}
+    stored: dict[int, bool | None] = {}
+    async with RigLink(args.address, log, args.adapter, args.cipher) as link, link._busy:
+        before = await run_query(link, "brightness")
+        original = before.brightness_level if before is not None else None
+        power = await run_query(link, "power")
+        if power is not None and power.power is False:
+            await link.write(protocol.power_frame(True))
+        print(f"\n  brightness before the test: {original if original is not None else 'unknown'}")
+        for level, question, prediction in SCALE_STEPS:
+            await link.write(protocol.build_frame(protocol.CMD_BRIGHTNESS, [level]))
+            await asyncio.sleep(SETTLE_BEFORE_READBACK)
+            reply = await run_query(link, "brightness")
+            got = reply.brightness_level if reply is not None else None
+            stored[level] = None if got is None else got == level
+            print(
+                f"\n  >>> brightness byte {level} written; the light reports {got} ({prediction})"
+            )
+            if question is None:
+                await prompt_keeping_alive(
+                    link, "  >>> Look at it for a moment, then press Enter: "
+                )
+                continue
+            while True:
+                raw = await prompt_keeping_alive(link, f"  >>> {question} [y]es / [n]o / [q]uit: ")
+                key = (raw or "q").strip().lower()[:1]
+                if key in ("y", "n", "q"):
+                    break
+            if key == "q":
+                break
+            answers[level] = "yes" if key == "y" else "no"
+            log.write_line(
+                {
+                    "summary": "observation", "schema": census.SCHEMA, "source": "manual", "at": now_iso(),
+                    "address": args.address.upper(), "observed": f"brightness {level}: {question} {answers[level]}",
+                    "capability": "brightness", "outcome": "worked", "dialect": None,
+                }
+            )  # fmt: skip
+        if original is not None and 1 <= original <= 255:
+            await link.write(protocol.build_frame(protocol.CMD_BRIGHTNESS, [original]))
+        if power is not None and power.power is False:
+            await link.write(protocol.power_frame(False))
+    scale, reason = scale_from(stored.get(255), answers.get(100), answers.get(255))
+    log.write_line(
+        {
+            "summary": "brightness_scale", "schema": census.SCHEMA, "source": "pi", "at": now_iso(),
+            "address": args.address.upper(), "model": settings.model, "scale": scale, "reason": reason,
+            "stored": {str(k): v for k, v in stored.items()}, "answers": {str(k): v for k, v in answers.items()},
+            "restored_to": original,
+        }
+    )  # fmt: skip
+    print(f"\n  brightness scale: {scale or 'undecided'} ({reason}); put back to {original}")
+
+
 async def cmd_census(args: argparse.Namespace) -> None:
     """The shared read battery; one govee-evidence/1 summary line per run."""
     settings = await resolve_settings(args)
@@ -1228,6 +1321,11 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p_status.add_argument("--candidates", help="active-probe order, e.g. 15,0D,02")
 
+    p_scale = sub.add_parser(
+        "scale", help="brightness scale, one step at a time with a question per step"
+    )
+    add_connect_args(p_scale)
+
     p_census = sub.add_parser(
         "census",
         help="the shared read battery, with an optional probe; writes govee-evidence/1 records",
@@ -1281,6 +1379,8 @@ def main(argv: Sequence[str] | None = None) -> None:
             asyncio.run(cmd_scan(args))
         elif args.command == "status":
             asyncio.run(cmd_status(args))
+        elif args.command == "scale":
+            asyncio.run(cmd_scale(args))
         elif args.command == "census":
             asyncio.run(cmd_census(args))
         elif args.command == "send":

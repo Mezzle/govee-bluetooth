@@ -190,7 +190,7 @@ def ingest_records(
             if record.get("model"):
                 dev.models.add(str(record["model"]).upper())
             continue
-        if kind in ("dump", "verify"):
+        if kind in ("dump", "verify", "brightness_scale"):
             continue
         if "frame" in record and "direction" in record:
             src = _guess_source(record, source or current_source)

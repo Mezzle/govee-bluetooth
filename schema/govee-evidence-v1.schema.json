@@ -21,6 +21,9 @@
     },
     {
       "$ref": "#/$defs/verify"
+    },
+    {
+      "$ref": "#/$defs/brightness_scale"
     }
   ],
   "$defs": {
@@ -486,6 +489,63 @@
         },
         "verdict": {
           "type": "string"
+        }
+      }
+    },
+    "brightness_scale": {
+      "type": "object",
+      "description": "Result of the rig's stepped brightness-scale test (rig scale).",
+      "required": [
+        "summary",
+        "schema",
+        "source",
+        "address",
+        "scale"
+      ],
+      "properties": {
+        "summary": {
+          "const": "brightness_scale"
+        },
+        "schema": {
+          "const": "govee-evidence/1"
+        },
+        "source": {
+          "$ref": "#/$defs/source"
+        },
+        "at": {
+          "type": "string"
+        },
+        "address": {
+          "type": "string"
+        },
+        "model": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "scale": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "'255', '100', or null when the answers and read-back disagree"
+        },
+        "reason": {
+          "type": "string"
+        },
+        "stored": {
+          "type": "object",
+          "description": "per written level, whether the light reported it back"
+        },
+        "answers": {
+          "type": "object"
+        },
+        "restored_to": {
+          "type": [
+            "integer",
+            "null"
+          ]
         }
       }
     }

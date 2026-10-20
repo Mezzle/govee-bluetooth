@@ -7,6 +7,7 @@ nothing (and exits 0) when the value is not there, so a shell caller can
 fall back to asking.
 
     evidence_query.py FILE light FIELD          a field of the last light summary
+    evidence_query.py FILE get KIND FIELD       a field of the last record with "summary": KIND
     evidence_query.py FILE ads                  scanned lights: address|name|model|pact|enc|rssi, strongest first
     evidence_query.py FILE verify ACTION [ARG]  yes/no: did the last ACTION (with ARG among its args) echo?
     evidence_query.py FILE echoed ACTION        first args of every ACTION that echoed, comma-separated
@@ -54,9 +55,9 @@ def text(value: Any) -> str:
     return str(value)
 
 
-def light_field(recs: list[dict[str, Any]], field: str) -> str:
-    lights = [r for r in recs if r.get("summary") == "light"]
-    return text(lights[-1].get(field)) if lights else ""
+def light_field(recs: list[dict[str, Any]], field: str, kind: str = "light") -> str:
+    matches = [r for r in recs if r.get("summary") == kind]
+    return text(matches[-1].get(field)) if matches else ""
 
 
 def ads(recs: list[dict[str, Any]]) -> list[str]:
@@ -114,6 +115,8 @@ def main(argv: list[str]) -> int:
     what = argv[1]
     if what == "light" and len(argv) == 3:
         out = light_field(recs, argv[2])
+    elif what == "get" and len(argv) == 4:
+        out = light_field(recs, argv[3], kind=argv[2])
     elif what == "ads":
         out = "\n".join(ads(recs))
     elif what == "verify" and len(argv) in (3, 4):

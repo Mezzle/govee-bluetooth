@@ -442,18 +442,16 @@ fi
 
 # ── 6 ─────────────────────────────────────────────────────────────────────
 stage "Brightness scale and colour temperature"
-say "Brightness 100 then 200 tells 0-100 from 0-255 firmware: a 0-100 light"
-say "reports the second as unchanged or clamped. Then a white in the dialect"
-say "that echoed, at two temperatures, to see whether the reply carries kelvin."
-connected bri verify on bri 100 sleep 1 bri 200 sleep 1 bri 50
+say "Brightness first, one step at a time: dim (25), then 100, then 255,"
+say "with a question after each. A 0-100 light is at full on 100 and does"
+say "nothing more on 255; a 0-255 light is only about 40% on 100 and gets"
+say "clearly brighter on 255. Its brightness is put back afterwards."
+connected bri scale
 B="$BENCH_DIR/$LABEL-bri.jsonl"
-case "$(q "$B" verify brightness 200)" in
-  yes) scale=255 ;;
-  no)  scale=100 ;;
-  *)   scale="" ;;
-esac
-step "Did the light get brighter on 200 than on 100?"
-suggest BRIGHTNESS_SCALE "Brightness scale (255, 100, or other):" "$scale"
+note "$(q "$B" get brightness_scale reason)"
+suggest BRIGHTNESS_SCALE "Brightness scale (255, 100, or other):" "$(q "$B" get brightness_scale scale)"
+say "Now white in the dialect that echoed, at two temperatures, to see"
+say "whether the reply carries kelvin."
 echoed_now="${ECHOED:-$(q "$BENCH_DIR/$LABEL-probe.jsonl" light echoed)}"
 case "$echoed_now" in
   *0D*) ct_default=0D ;;

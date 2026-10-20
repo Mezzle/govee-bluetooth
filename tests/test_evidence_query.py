@@ -117,3 +117,13 @@ def test_verify_and_echoed(eq, tmp_path, capsys) -> None:
 def test_usage_errors(eq, capsys) -> None:
     assert eq.main([]) == 2
     assert eq.main(["x", "bogus"]) == 2
+
+
+def test_get_any_record_kind(eq, tmp_path, capsys) -> None:
+    log = _write(
+        tmp_path / "bri.jsonl",
+        {"summary": "session"},
+        {"summary": "brightness_scale", "scale": "255", "reason": "100 looked partial"},
+    )
+    assert _run(eq, capsys, str(log), "get", "brightness_scale", "scale") == "255"
+    assert _run(eq, capsys, str(log), "get", "nothing", "scale") == ""
