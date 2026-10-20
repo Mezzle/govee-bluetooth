@@ -24,6 +24,9 @@
     },
     {
       "$ref": "#/$defs/brightness_scale"
+    },
+    {
+      "$ref": "#/$defs/colour_temperature"
     }
   ],
   "$defs": {
@@ -546,6 +549,64 @@
             "integer",
             "null"
           ]
+        }
+      }
+    },
+    "colour_temperature": {
+      "type": "object",
+      "description": "Result of the rig's stepped colour-temperature test (rig whites).",
+      "required": [
+        "summary",
+        "schema",
+        "source",
+        "address",
+        "works"
+      ],
+      "properties": {
+        "summary": {
+          "const": "colour_temperature"
+        },
+        "schema": {
+          "const": "govee-evidence/1"
+        },
+        "source": {
+          "$ref": "#/$defs/source"
+        },
+        "at": {
+          "type": "string"
+        },
+        "address": {
+          "type": "string"
+        },
+        "model": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "submode": {
+          "type": "string"
+        },
+        "works": {
+          "type": "boolean",
+          "description": "the operator saw both the warm and the cool step"
+        },
+        "answers": {
+          "type": "object"
+        },
+        "reported": {
+          "type": "object",
+          "description": "kelvin the light reported after each step"
+        },
+        "limits": {
+          "type": "object",
+          "description": "kelvin reported after writing 2000 and 9000: the range the firmware clamps to"
+        },
+        "result": {
+          "type": "string"
+        },
+        "restored": {
+          "type": "boolean"
         }
       }
     }

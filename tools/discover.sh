@@ -450,8 +450,9 @@ connected bri scale
 B="$BENCH_DIR/$LABEL-bri.jsonl"
 note "$(q "$B" get brightness_scale reason)"
 suggest BRIGHTNESS_SCALE "Brightness scale (255, 100, or other):" "$(q "$B" get brightness_scale scale)"
-say "Now white in the dialect that echoed, at two temperatures, to see"
-say "whether the reply carries kelvin."
+say "Then colour temperature: cool, warm, cool again, one step at a time with"
+say "a question after each, so the start does not matter. It also reads back"
+say "the warmest and coolest the light accepts, then puts its colour back."
 echoed_now="${ECHOED:-$(q "$BENCH_DIR/$LABEL-probe.jsonl" light echoed)}"
 case "$echoed_now" in
   *0D*) ct_default=0D ;;
@@ -459,11 +460,10 @@ case "$echoed_now" in
   *)    ct_default=15 ;;
 esac
 suggest CT_SUBMODE "Sub-mode to try white in (0D or 15):" "$ct_default"
-connected ct verify submode "$CT_SUBMODE" ct 4300 sleep 1 ct 6700 sleep 1
+connected ct whites --submode "$CT_SUBMODE"
 T="$BENCH_DIR/$LABEL-ct.jsonl"
-ct_log="4300 K $(q "$T" verify ct 4300 | sed 's/yes/echoed/;s/no/not echoed/'), 6700 K $(q "$T" verify ct 6700 | sed 's/yes/echoed/;s/no/not echoed/')"
-step "Did the light go warm white, then cool white?"
-suggest CT_RESULT "What the light did (Enter keeps the log's reading; add what you saw):" "log: $ct_log"
+suggest CT_RESULT "Colour temperature (Enter keeps the test's reading; add a note if you like):" \
+  "$(q "$T" get colour_temperature result)"
 
 # ── 7 ─────────────────────────────────────────────────────────────────────
 stage "Scene codes"

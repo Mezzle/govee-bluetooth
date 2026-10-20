@@ -1135,6 +1135,111 @@ async def cmd_scale(args: argparse.Namespace) -> None:
     print(f"\n  brightness scale: {scale or 'undecided'} ({reason}); put back to {original}")
 
 
+WHITE_STEPS = (
+    # (kelvin, question or None)
+    (6500, None),
+    (2700, "Did it turn WARM, yellowish white?"),
+    (6500, "Did it turn COOL, bluish white?"),
+)
+# Written once each and read back only, to record the range limits.
+WHITE_LIMIT_PROBES = (2000, 9000)
+
+
+async def _read_mode(link: RigLink) -> Any:
+    reply = await run_query(link, "mode")
+    return reply.mode if reply is not None else None
+
+
+async def cmd_whites(args: argparse.Namespace) -> None:
+    """Colour temperature, warm and cool ends one at a time, with a question per step."""
+    settings = await resolve_settings(args)
+    submode = settings.submode
+    if submode not in (
+        protocol.SUBMODE_COLOR_LEGACY,
+        protocol.SUBMODE_COLOR_RGBWW,
+        protocol.SUBMODE_COLOR_RGBIC,
+    ):
+        sys.exit(
+            f"no colour-temperature frame for sub-mode {submode:#04x}; use --submode 02, 0D or 15"
+        )
+    log = FrameLog(
+        path=args.log,
+        address=args.address,
+        quiet_heartbeat=not args.show_heartbeat,
+        keep_secrets=args.keep_secrets,
+    )
+    log.session(adapter=args.adapter or "default", command="whites", cipher=args.cipher)
+    answers: dict[str, str] = {}
+    reported: dict[str, int | None] = {}
+    async with RigLink(args.address, log, args.adapter, args.cipher) as link, link._busy:
+        before = await _read_mode(link)
+        for n, (kelvin, question) in enumerate(WHITE_STEPS):
+            await link.write(protocol.color_temp_frame(kelvin, submode))
+            await asyncio.sleep(SETTLE_BEFORE_READBACK)
+            mode = await _read_mode(link)
+            got = mode.color_temp_kelvin if mode is not None else None
+            reported[f"{n}:{kelvin}"] = got
+            print(
+                f"\n  >>> white at {kelvin} K written; the light reports {got if got else 'no kelvin'}"
+            )
+            if question is None:
+                await prompt_keeping_alive(
+                    link, "  >>> Look at it for a moment, then press Enter: "
+                )
+                continue
+            while True:
+                raw = await prompt_keeping_alive(link, f"  >>> {question} [y]es / [n]o / [q]uit: ")
+                key = (raw or "q").strip().lower()[:1]
+                if key in ("y", "n", "q"):
+                    break
+            if key == "q":
+                break
+            answers[str(kelvin)] = "yes" if key == "y" else "no"
+            log.write_line(
+                {
+                    "summary": "observation", "schema": census.SCHEMA, "source": "manual", "at": now_iso(),
+                    "address": args.address.upper(), "observed": f"white {kelvin} K: {question} {answers[str(kelvin)]}",
+                    "capability": "rgbww", "outcome": "worked" if key == "y" else "unchanged",
+                    "dialect": f"0x{submode:02X}",
+                }
+            )  # fmt: skip
+        limits: dict[str, int | None] = {}
+        for kelvin in WHITE_LIMIT_PROBES:
+            await link.write(protocol.color_temp_frame(kelvin, submode))
+            await asyncio.sleep(SETTLE_BEFORE_READBACK)
+            mode = await _read_mode(link)
+            limits[str(kelvin)] = mode.color_temp_kelvin if mode is not None else None
+        restored = False
+        if before is not None and before.submode in (
+            protocol.SUBMODE_COLOR_LEGACY,
+            protocol.SUBMODE_COLOR_RGBWW,
+        ):
+            await link.write(
+                protocol.build_frame(protocol.CMD_MODE, [before.submode, *before.body])
+            )
+            restored = True
+    warm, cool = answers.get("2700"), answers.get("6500")
+    works = warm == "yes" and cool == "yes"
+    summary = (
+        "warm and cool both seen"
+        if works
+        else f"warm {warm or 'not asked'}, cool {cool or 'not asked'}"
+    )
+    lo, hi = limits.get("2000"), limits.get("9000")
+    range_text = f"range read back {lo or '?'}-{hi or '?'} K"
+    log.write_line(
+        {
+            "summary": "colour_temperature", "schema": census.SCHEMA, "source": "pi", "at": now_iso(),
+            "address": args.address.upper(), "model": settings.model, "submode": f"{submode:02X}",
+            "works": works, "answers": answers, "reported": reported, "limits": limits,
+            "result": f"{summary}; {range_text}", "restored": restored,
+        }
+    )  # fmt: skip
+    print(
+        f"\n  colour temperature in 0x{submode:02X}: {summary}; {range_text}; restored: {restored}"
+    )
+
+
 async def cmd_census(args: argparse.Namespace) -> None:
     """The shared read battery; one govee-evidence/1 summary line per run."""
     settings = await resolve_settings(args)
@@ -1337,6 +1442,11 @@ def build_parser() -> argparse.ArgumentParser:
     )
     add_connect_args(p_scale)
 
+    p_whites = sub.add_parser(
+        "whites", help="colour temperature, warm and cool one at a time with a question per step"
+    )
+    add_connect_args(p_whites)
+
     p_census = sub.add_parser(
         "census",
         help="the shared read battery, with an optional probe; writes govee-evidence/1 records",
@@ -1390,6 +1500,8 @@ def main(argv: Sequence[str] | None = None) -> None:
             asyncio.run(cmd_scan(args))
         elif args.command == "status":
             asyncio.run(cmd_status(args))
+        elif args.command == "whites":
+            asyncio.run(cmd_whites(args))
         elif args.command == "scale":
             asyncio.run(cmd_scale(args))
         elif args.command == "census":
