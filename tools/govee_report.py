@@ -97,6 +97,12 @@ class Device:
     frames: list[dict[str, Any]] = field(default_factory=list)
     observations: list[dict[str, Any]] = field(default_factory=list)
     sources: set[str] = field(default_factory=set)
+    ads: list[dict[str, Any]] = field(default_factory=list)  # scan sightings
+    tests: list[dict[str, Any]] = field(default_factory=list)  # verify / scale / whites results
+
+    @property
+    def tested(self) -> bool:
+        return bool(self.summaries or self.frames or self.observations or self.tests)
 
     @property
     def model(self) -> str | None:
@@ -182,6 +188,21 @@ def ingest_records(
             obs["source"] = "manual"
             dev.observations.append(obs)
             dev.sources.add("manual")
+            continue
+        if kind == "advertisement":
+            dev = evidence.device(str(record.get("address", "?")))
+            dev.ads.append(dict(record))
+            if record.get("name"):
+                dev.names.add(str(record["name"]))
+            if record.get("model"):
+                dev.models.add(str(record["model"]).upper())
+            continue
+        if kind in ("verify", "brightness_scale", "colour_temperature"):
+            dev = evidence.device(str(record.get("address", "?")))
+            test = dict(record)
+            test["source"] = source or str(record.get("source") or current_source or "pi")
+            dev.tests.append(test)
+            dev.sources.add(test["source"])
             continue
         if kind == "dump":
             continue
@@ -401,7 +422,10 @@ CAPABILITIES = ("power", "brightness", "rgb", "rgbww", "segments", "scene", "mus
 
 
 def capabilities(
-    result: Any, facts: dict[str, Any], observations: list[dict[str, Any]]
+    result: Any,
+    facts: dict[str, Any],
+    observations: list[dict[str, Any]],
+    tests: list[dict[str, Any]] | None = None,
 ) -> dict[str, dict[str, str]]:
     """Per capability: ``{"level": verified|inferred|observed|untested|failed, "basis": text}``."""
     caps: dict[str, dict[str, str]] = {
@@ -409,7 +433,14 @@ def capabilities(
     }
 
     def set_level(cap: str, level: str, basis: str) -> None:
-        order = {"untested": 0, "failed": 1, "inferred": 2, "verified": 3, "observed": 4}
+        order = {
+            "untested": 0,
+            "failed": 1,
+            "inferred": 2,
+            "disputed": 2,
+            "verified": 3,
+            "observed": 4,
+        }
         if order[level] >= order[caps[cap]["level"]]:
             caps[cap] = {"level": level, "basis": basis}
 
@@ -452,33 +483,88 @@ def capabilities(
         set_level("rgb", "failed", "all four colour dialects were written; none echoed")
     if result.segments:
         set_level("segments", "inferred", f"AA 40 reports {result.segments} segments")
+    operator_failures: dict[str, str] = {}
     for obs in observations:
         cap = obs.get("capability")
         outcome = obs.get("outcome", "")
         if cap in caps:
-            level = (
-                "observed"
-                if outcome in ("worked", "partial")
-                else "failed"
-                if outcome == "failed"
-                else "observed"
+            # "unchanged" on one dialect says nothing about the capability:
+            # another dialect may drive it. Only a change, or an outright
+            # failure, is evidence.
+            if outcome in ("worked", "partial"):
+                set_level(cap, "observed", f"operator: {obs.get('observed', '')}")
+            elif outcome == "failed":
+                operator_failures[cap] = str(obs.get("observed", ""))
+                set_level(cap, "failed", f"operator: {obs.get('observed', '')}")
+    for test in tests or []:
+        kind = test.get("summary")
+        if kind == "verify" and test.get("echoed"):
+            action, args = test.get("action"), test.get("args") or []
+            if action == "ct":
+                kelvin = args[1] if len(args) > 1 else "?"
+                set_level("rgbww", "verified", f"white at {kelvin} K written and reported back")
+            elif action == "brightness":
+                set_level(
+                    "brightness",
+                    "verified",
+                    f"brightness {args[0] if args else '?'} written and reported back",
+                )
+            elif action == "scene":
+                set_level(
+                    "scene",
+                    "verified",
+                    f"scene {args[0] if args else '?'} written and reported back",
+                )
+            elif action == "power":
+                set_level("power", "verified", "power written and reported back")
+        elif kind == "brightness_scale" and test.get("scale"):
+            set_level(
+                "brightness", "observed", f"scale 0-{test['scale']}: {test.get('reason', '')}"
             )
-            set_level(cap, level, f"operator: {obs.get('observed', '')}")
+        elif kind == "colour_temperature":
+            limits = test.get("limits") or {}
+            span = f"{limits.get('2000') or '?'}-{limits.get('9000') or '?'} K"
+            if test.get("works"):
+                set_level("rgbww", "observed", f"warm and cool both seen; range {span}")
+            elif test.get("answers"):
+                set_level("rgbww", "failed", f"{test.get('result', '')}")
+    # A read-back says the firmware stored the value; an operator who watched
+    # and saw nothing says it did not render. Neither wins: mark it disputed.
+    for cap, seen in operator_failures.items():
+        if caps[cap]["level"] == "verified":
+            caps[cap] = {
+                "level": "disputed",
+                "basis": f"{caps[cap]['basis']}, but the operator saw: {seen}",
+            }
     return caps
 
 
 def analyse(evidence: Evidence) -> dict[str, Any]:
     """The evidence document: sessions, per-device facts, verdicts, provenance."""
     devices_out: list[dict[str, Any]] = []
+    seen_only: list[dict[str, Any]] = []
     for address in sorted(evidence.devices):
         dev = evidence.devices[address]
+        last_ad = dev.ads[-1] if dev.ads else None
+        if not dev.tested:
+            if last_ad is not None:
+                seen_only.append(
+                    {
+                        k: last_ad.get(k)
+                        for k in ("address", "name", "model", "pact", "encrypted", "rssi", "at")
+                    }
+                )
+            continue
         facts = facts_from_frames(dev.frames)
         summary = dev.summaries[-1] if dev.summaries else None
+        # The census may run without a scan (--no-scan): take the advertised
+        # pact and flags from the latest scan sighting instead.
+        adv_source = summary if summary and summary.get("pact") else last_ad
         adv = None
-        if summary and summary.get("pact"):
+        if adv_source and adv_source.get("pact"):
             try:
-                ptype, pcode = (int(x) for x in str(summary["pact"]).split("/"))
-                flags = summary.get("flags")
+                ptype, pcode = (int(x) for x in str(adv_source["pact"]).split("/"))
+                flags = adv_source.get("flags")
                 raw = bytes([flags & 0xFF]) if isinstance(flags, int) else b""
                 raw += b"\x88\xec" + bytes([ptype >> 8, ptype & 0xFF, pcode & 0xFF])
                 adv = advertisement.parse_raw(raw)
@@ -512,11 +598,21 @@ def analyse(evidence: Evidence) -> dict[str, Any]:
             )
         model = dev.model
         verdict = census.classify(result, model=model, adv=adv, bgc=bgc)
-        caps = capabilities(result, facts, dev.observations)
+        caps = capabilities(result, facts, dev.observations, dev.tests)
+        probe_writes = [f"{w:#04x}" for w in facts["probe_writes"]]
+        if not probe_writes and summary and summary.get("probe_acks"):
+            probe_writes = [f"0x{k.lower()}" for k in summary["probe_acks"]]
+        scale_test = next(
+            (t for t in reversed(dev.tests) if t.get("summary") == "brightness_scale"), None
+        )
+        white_test = next(
+            (t for t in reversed(dev.tests) if t.get("summary") == "colour_temperature"), None
+        )
         profile = models.table_profile_for(model) if model else None
         timeline = sorted(
             {str(f.get("at", "")) for f in dev.frames}
             | {str(s.get("at", "")) for s in dev.summaries}
+            | {str(t.get("at", "")) for t in dev.tests}
         )
         devices_out.append(
             {
@@ -535,8 +631,8 @@ def analyse(evidence: Evidence) -> dict[str, Any]:
                 "dance_party_certified": "dance_party" in dev.sources,
                 "firmware": result.firmware,
                 "hardware": result.hardware,
-                "pact": summary.get("pact") if summary else None,
-                "encrypted_flag": summary.get("encrypted") if summary else None,
+                "pact": adv_source.get("pact") if adv_source else None,
+                "encrypted_flag": adv_source.get("encrypted") if adv_source else None,
                 "gatt": summary.get("gatt") if summary else None,
                 "bgc": summary.get("bgc") if summary else None,
                 "verdict": {
@@ -571,11 +667,27 @@ def analyse(evidence: Evidence) -> dict[str, Any]:
                 if result.probed
                 else None,
                 "probe": {
-                    "writes": [f"{s:#04x}" for s in facts["probe_writes"]],
+                    "writes": probe_writes,
                     "echoed": [f"{s:#04x}" for s in result.echoed],
+                    "acks": summary.get("probe_acks") if summary else None,
+                    "observed": summary.get("observed") if summary else None,
                 }
                 if result.probed
                 else None,
+                "brightness_scale": {
+                    "scale": scale_test.get("scale"),
+                    "reason": scale_test.get("reason"),
+                }
+                if scale_test
+                else None,
+                "colour_temperature": {
+                    "works": white_test.get("works"),
+                    "result": white_test.get("result"),
+                    "limits": white_test.get("limits"),
+                }
+                if white_test
+                else None,
+                "tests": dev.tests,
                 "observations": dev.observations,
                 "summaries": dev.summaries,
                 "frames": dev.frames,
@@ -598,6 +710,7 @@ def analyse(evidence: Evidence) -> dict[str, Any]:
         "dance_party_certified": any(d["dance_party_certified"] for d in devices_out),
         "secrets_redacted": not evidence.keep_secrets,
         "devices": devices_out,
+        "seen_in_scan": seen_only,
     }
 
 
@@ -641,17 +754,24 @@ def render_markdown(doc: dict[str, Any]) -> str:
         "",
     ]
     if doc["sessions"]:
+        groups: dict[tuple[str, str, str], list[dict[str, Any]]] = {}
+        for sess in doc["sessions"]:
+            key = (
+                str(SOURCE_LABELS.get(sess.get("source"), sess.get("source"))),
+                str(sess.get("command") or ("probe census" if sess.get("probe") else "census")),
+                str(sess.get("board") or sess.get("transport") or sess.get("adapter") or ""),
+            )
+            groups.setdefault(key, []).append(sess)
         lines += [
             "## Sessions",
             "",
-            "| source | software | board / transport | at | lights | probe |",
+            "| source | command | board / transport | runs | software (latest) | latest |",
             "| --- | --- | --- | --- | --- | --- |",
         ]
-        for s in doc["sessions"]:
+        for (src, command, where), runs in groups.items():
+            latest = max(runs, key=lambda r: str(r.get("at", "")))
             lines.append(
-                f"| {SOURCE_LABELS.get(s.get('source'), s.get('source'))} | {s.get('software', '')} | "
-                f"{s.get('board') or s.get('transport') or s.get('adapter') or ''} | {s.get('at', '')} | "
-                f"{s.get('lights', '')} | {s.get('probe', '')} |"
+                f"| {src} | {command} | {where} | {len(runs)} | {latest.get('software', '')} | {latest.get('at', '')} |"
             )
         lines.append("")
     lines += ["## Devices", ""]
@@ -706,6 +826,16 @@ def render_markdown(doc: dict[str, Any]) -> str:
             "",
         ]
         if dev["probe"]:
+            acks = dev["probe"].get("acks") or {}
+            seen = dev["probe"].get("observed") or {}
+            if acks or seen:
+                lines += [
+                    "| probe dialect | firmware ack | operator saw a change |",
+                    "| --- | --- | --- |",
+                ]
+                for key in sorted(set(acks) | set(seen)):
+                    lines.append(f"| 0x{key} | {acks.get(key, '-')} | {seen.get(key, '-')} |")
+                lines.append("")
             lines += [
                 f"Probe writes: {', '.join(dev['probe']['writes']) or 'none logged'}; echoed: {', '.join(dev['probe']['echoed']) or 'none'}.",
                 f"Restoration: {dev['restoration']['restored'] or '?'}"
@@ -713,11 +843,25 @@ def render_markdown(doc: dict[str, Any]) -> str:
                 + ".",
                 "",
             ]
+        if dev.get("brightness_scale"):
+            b = dev["brightness_scale"]
+            lines += [f"Brightness scale: **0-{b['scale'] or '?'}** ({b['reason']}).", ""]
+        if dev.get("colour_temperature"):
+            w = dev["colour_temperature"]
+            lines += [f"Colour temperature: {w['result']}.", ""]
         if dev["observations"]:
-            lines += ["Operator observations:", ""]
+            counts: dict[tuple[str, str, str], int] = {}
+            for o in dev["observations"]:
+                key = (
+                    str(o.get("observed")),
+                    str(o.get("capability", "other")),
+                    str(o.get("outcome", "?")),
+                )
+                counts[key] = counts.get(key, 0) + 1
+            lines += ["Operator observations (repeats across runs counted):", ""]
             lines += [
-                f"- {o.get('observed')} ({o.get('capability', 'other')}: {o.get('outcome', '?')})"
-                for o in dev["observations"]
+                f"- {text} ({cap}: {outcome})" + (f" x{n}" if n > 1 else "")
+                for (text, cap, outcome), n in counts.items()
             ]
             lines.append("")
         if dev["error"]:
@@ -729,6 +873,19 @@ def render_markdown(doc: dict[str, Any]) -> str:
             + ". A `verified` colour dialect means the firmware stored the probe colour; whether every segment lit is an operator observation.",
             "",
         ]
+    if doc.get("seen_in_scan"):
+        lines += [
+            "## Seen in a scan, not tested",
+            "",
+            "| model | name | address | pact | encrypted | rssi |",
+            "| --- | --- | --- | --- | --- | --- |",
+        ]
+        for ad in doc["seen_in_scan"]:
+            enc = {True: "yes", False: "no"}.get(ad.get("encrypted"), "?")
+            lines.append(
+                f"| {ad.get('model') or '-'} | {ad.get('name') or ''} | {ad.get('address')} | {ad.get('pact') or '-'} | {enc} | {ad.get('rssi', '')} |"
+            )
+        lines.append("")
     lines += [
         "## How to read this",
         "",
@@ -736,6 +893,7 @@ def render_markdown(doc: dict[str, Any]) -> str:
         "- *probable*: every reading agrees, but no controlled write proved it.",
         "- *inferred*: from the light's own status reply or the model tables, nothing written.",
         "- *observed*: an operator saw it on the strip.",
+        "- *disputed*: the light reported the value back, but the operator saw no effect.",
         "- *untested*: no evidence either way; an opcode existing in another family is not evidence.",
         "",
         f"{BADGE} marks evidence gathered while a Flipper was running Dance Party, Live DJ or Census. "

@@ -13,7 +13,8 @@ the observations that support it, and the report generator renders that.
 
 from __future__ import annotations
 
-from collections.abc import Callable
+import asyncio
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 
 from . import protocol
@@ -31,11 +32,27 @@ SILENT_AFTER = 3
 # One probe colour per dialect; none is a kelvin-tint colour, no channel is
 # zero or full. Same values as govee_probe_color() in Dance Party.
 PROBE_COLORS: dict[int, tuple[int, int, int]] = {
-    protocol.SUBMODE_COLOR_LEGACY: (0x12, 0x34, 0x56),
-    protocol.SUBMODE_COLOR_DREAMCOLOR: (0x15, 0x37, 0x59),
-    protocol.SUBMODE_COLOR_RGBWW: (0x13, 0x35, 0x57),
-    protocol.SUBMODE_COLOR_RGBIC: (0x14, 0x36, 0x58),
+    protocol.SUBMODE_COLOR_LEGACY: (0xC8, 0x1E, 0x28),  # red
+    protocol.SUBMODE_COLOR_DREAMCOLOR: (0x1E, 0xC8, 0x3C),  # green
+    protocol.SUBMODE_COLOR_RGBWW: (0x28, 0x3C, 0xC8),  # blue
+    protocol.SUBMODE_COLOR_RGBIC: (0xB4, 0x1E, 0xC8),  # magenta
 }
+# The first H6006 session used four near-identical dark blues: once one
+# dialect landed, a later one could not be seen to work. These are
+# saturated, distinct to the eye and named in the operator's question.
+PROBE_COLOR_NAMES: dict[int, str] = {
+    protocol.SUBMODE_COLOR_LEGACY: "red",
+    protocol.SUBMODE_COLOR_DREAMCOLOR: "green",
+    protocol.SUBMODE_COLOR_RGBWW: "blue",
+    protocol.SUBMODE_COLOR_RGBIC: "magenta",
+}
+# After going back to the pre-probe state between dialects, wait this long
+# so the reset's own write ack arrives before the next probe write is
+# attributed. With a person answering, wait long enough for them to see the
+# light settle at the baseline: in the H6006 session a 0.6 s gap made the
+# blue -> white reset look like the 0x15 write's effect.
+RESET_SETTLE_S = 0.6
+RESET_SETTLE_ASKING_S = 2.5
 PROBE_ORDER: tuple[int, ...] = (
     protocol.SUBMODE_COLOR_LEGACY,
     protocol.SUBMODE_COLOR_DREAMCOLOR,
@@ -94,6 +111,13 @@ class CensusResult:
     segment_page: protocol.Reply | None = None
     probed: bool = False
     echoed: list[int] = field(default_factory=list)
+    # Per probe dialect, what the firmware's write ack said: "accepted"
+    # (33 05 00), "rejected" (33 05 <non-zero>) or "none". The H6006 rejects
+    # 02 / 0B / 15 with 33 05 01 and accepts 0D with 33 05 00 (bench).
+    probe_acks: dict[int, str] = field(default_factory=dict)
+    # Per probe dialect, what the operator saw when asked: "yes", "no",
+    # "wrong" (changed, but not to the probe colour) or "partial".
+    observed: dict[int, str] = field(default_factory=dict)
     restored: str | None = None  # "full", "power", "none"
     restore_note: str | None = None
     error: str | None = None
@@ -108,13 +132,22 @@ async def async_census(
     *,
     probe_writes: bool = False,
     abort: Callable[[], bool] | None = None,
+    ask: Callable[[int, tuple[int, int, int]], Awaitable[str | None]] | None = None,
+    notify: Callable[[str], None] | None = None,
 ) -> CensusResult:
-    """Run the read battery (and the probe if asked) over a connected, subscribed link."""
+    """Run the read battery (and the probe if asked) over a connected, subscribed link.
+
+    ``ask(submode, rgb)`` is called right after each probe write, before the
+    read-back, so a person can say whether the light changed; it returns
+    "yes", "no", "wrong", "partial", or None to stop (the light is still
+    restored). Links that expose an ``ack_log`` list of ``(cmd, status)``
+    pairs get each probe write's application ack recorded too.
+    """
     result = CensusResult(connected=True, subscribed=True)
     try:
         await _reads(link, result, abort)
         if probe_writes and not result.silent and not result.aborted:
-            await _probe(link, result, abort)
+            await _probe(link, result, abort, ask, notify)
     except ProbeConnectionLost as err:
         result.error = f"disconnected: {err}"
     return result
@@ -183,13 +216,61 @@ def _mode_rgb(mode: protocol.ModeReport | None) -> tuple[int, int, int] | None:
     return mode.rgb
 
 
-async def _probe(link: ProbeLink, result: CensusResult, abort: Callable[[], bool] | None) -> None:
+def census_state_name(mode: protocol.ModeReport | None) -> str:
+    """A short name for the pre-probe state, for messages."""
+    if mode is None:
+        return "an unknown state"
+    name = submode_name(mode.submode)
+    if name == "scene":
+        return f"scene {mode.scene_id:#04x}" if mode.scene_id is not None else "a scene"
+    if name.startswith("music"):
+        return "a music mode"
+    if name.startswith("colour"):
+        return f"colour sub-mode {mode.submode:#04x}"
+    return f"mode {mode.submode:#04x}"
+
+
+def _restore_frame(result: CensusResult) -> bytes | None:
+    """The pre-probe 0x02 / 0x0D state as a write, or None when it cannot be rewritten.
+
+    The reported body is written back verbatim: an RGB write would turn a
+    white (kelvin) 0x0D state into RGB 00 00 00, i.e. dark. The H6006
+    reported 0D 000000 0A8C 000000 (2700 K white) on the bench.
+    """
+    if result.mode is None or _mode_rgb(result.mode) is None:
+        return None
+    return protocol.build_frame(protocol.CMD_MODE, [result.mode.submode, *result.mode.body])
+
+
+def _ack_since(link: ProbeLink, start: int, command: int) -> str:
+    ack_log = getattr(link, "ack_log", None)
+    if ack_log is None:
+        return "none"
+    for cmd, status in ack_log[start:]:
+        if cmd == command:
+            return "accepted" if status == 0 else "rejected"
+    return "none"
+
+
+async def _probe(
+    link: ProbeLink,
+    result: CensusResult,
+    abort: Callable[[], bool] | None,
+    ask: Callable[[int, tuple[int, int, int]], Awaitable[str | None]] | None = None,
+    notify: Callable[[str], None] | None = None,
+) -> None:
     result.probed = True
     powered_on = result.power is False
     if powered_on:
         await link.write(protocol.power_frame(True))
     page = result.segment_page
     last_mode_rgb = _mode_rgb(result.mode)
+    if notify is not None and _restore_frame(result) is None:
+        state = census_state_name(result.mode)
+        notify(
+            f"the light started in {state}, which the census cannot write back: there is no "
+            "reset between colours, so compare each with the colour before it"
+        )
     for submode in PROBE_ORDER:
         if abort is not None and abort():
             result.aborted = True
@@ -197,7 +278,15 @@ async def _probe(link: ProbeLink, result: CensusResult, abort: Callable[[], bool
         rgb = PROBE_COLORS[submode]
         stale_page = protocol.segment_page_has(page, rgb)
         stale_mode = last_mode_rgb == rgb
+        acks_before = len(getattr(link, "ack_log", None) or [])
         await link.write(protocol.rgb_frame(*rgb, submode=submode))
+        if ask is not None:
+            answer = await ask(submode, rgb)
+            if answer is None:
+                result.aborted = True
+                result.probe_acks[submode] = _ack_since(link, acks_before, protocol.CMD_MODE)
+                break
+            result.observed[submode] = answer
         echoed = False
         reply = await _query(link, result, protocol.mode_query_frame(), abort)
         if reply is not None and reply.mode is not None and reply.mode.submode == submode:
@@ -211,10 +300,19 @@ async def _probe(link: ProbeLink, result: CensusResult, abort: Callable[[], bool
             page = reply
         if echoed:
             result.echoed.append(submode)
+        result.probe_acks[submode] = _ack_since(link, acks_before, protocol.CMD_MODE)
+        if submode != PROBE_ORDER[-1] and _restore_frame(result) is not None:
+            # Back to the starting state, so the next dialect's change is
+            # judged against the same baseline (by eye and by read-back).
+            if notify is not None:
+                notify("back to the starting state; watch it settle before the next colour")
+            await link.write(_restore_frame(result))
+            await asyncio.sleep(RESET_SETTLE_ASKING_S if ask is not None else RESET_SETTLE_S)
+            last_mode_rgb = _mode_rgb(result.mode)
 
-    original = _mode_rgb(result.mode)
-    if original is not None and result.mode is not None:
-        await link.write(protocol.rgb_frame(*original, submode=result.mode.submode))
+    restore = _restore_frame(result)
+    if restore is not None and result.mode is not None:
+        await link.write(restore)
         result.restored = "full"
         if result.mode.submode not in result.echoed:
             result.restore_note = "colour rewritten in the reported dialect, which did not echo"
@@ -293,6 +391,20 @@ def classify(
             confidence = "inferred"
         return Verdict(family, security, confidence, reasons)
 
+    rejected = [s for s, a in result.probe_acks.items() if a == "rejected"]
+    accepted = [s for s, a in result.probe_acks.items() if a == "accepted"]
+    seen = [s for s, a in result.observed.items() if a in ("yes", "partial")]
+    if accepted or rejected:
+        reasons.append(
+            "write acks: accepted "
+            + (", ".join(f"{s:#04x}" for s in accepted) or "none")
+            + "; rejected "
+            + (", ".join(f"{s:#04x}" for s in rejected) or "none")
+        )
+    if result.observed:
+        reasons.append(
+            "operator saw a change on " + (", ".join(f"{s:#04x}" for s in seen) or "no dialect")
+        )
     if result.echoed:
         best = result.echoed[0]
         reasons.append("probe colour echoed on " + ", ".join(f"{s:#04x}" for s in result.echoed))
@@ -411,6 +523,10 @@ def summary_record(
     rec["probed"] = result.probed
     if result.probed:
         rec["echoed"] = ",".join(f"{s:02X}" for s in result.echoed)
+        if result.probe_acks:
+            rec["probe_acks"] = {f"{s:02X}": a for s, a in result.probe_acks.items()}
+        if result.observed:
+            rec["observed"] = {f"{s:02X}": a for s, a in result.observed.items()}
         rec["restored"] = result.restored
         if result.restore_note:
             rec["restore_note"] = result.restore_note

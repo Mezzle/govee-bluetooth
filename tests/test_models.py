@@ -127,3 +127,23 @@ def test_brightness_scale_for_submode() -> None:
     assert models.brightness_scale_for_submode(0x0D, 255) == 100
     assert models.brightness_scale_for_submode(0x15, 255) == 100
     assert models.brightness_scale_for_submode(0x04, 255) == 255
+
+
+def test_h6006_bulb_profile_from_the_bench() -> None:
+    profile = KNOWN_MODELS["H6006"]
+    assert profile.color_submode == protocol.SUBMODE_COLOR_RGBWW
+    # Bytes over 100 render dimmer on this bulb: the scale must be 0-100.
+    assert profile.brightness_scale == 100
+    assert protocol.brightness_frame(255, profile.brightness_scale)[2] == 100
+    assert not profile.supports_scenes
+    assert (profile.min_kelvin, profile.max_kelvin) == (2700, 6500)
+
+
+def test_kelvin_range_survives_overrides_and_defaults_wide() -> None:
+    assert (models.profile_for("H6159").min_kelvin, models.profile_for("H6159").max_kelvin) == (
+        2000,
+        9000,
+    )
+    forced = models.profile_for("H6006", brightness_scale=255)
+    assert (forced.min_kelvin, forced.max_kelvin) == (2700, 6500)
+    assert models.profile_for("H9999").max_kelvin == 9000

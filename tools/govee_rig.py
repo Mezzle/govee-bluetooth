@@ -94,6 +94,53 @@ def load_integration() -> tuple[Any, Any, Any, Any, Any, Any, Any]:
 
 const, protocol, models, probe, census, advertisement, cipher = load_integration()
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import blinkt  # noqa: E402  (tools/blinkt.py, next to this script)
+
+# The Blinkt status strip; a no-op unless --blinkt opened it.
+LIGHTS: blinkt.NullBlinkt = blinkt.NullBlinkt()
+
+
+def _frame_colour(frame: bytes) -> tuple[int, int, int] | None:
+    """The RGB a colour write carries, for mirroring on the Blinkt."""
+    if len(frame) < 8 or frame[0] != protocol.TYPE_WRITE or frame[1] != protocol.CMD_MODE:
+        return None
+    if frame[2] == protocol.SUBMODE_COLOR_RGBIC:
+        return (frame[4], frame[5], frame[6])
+    if frame[2] in (
+        protocol.SUBMODE_COLOR_LEGACY,
+        protocol.SUBMODE_COLOR_RGBWW,
+        protocol.SUBMODE_COLOR_DREAMCOLOR,
+    ):
+        if (
+            frame[3:6] == b"\x00\x00\x00"
+            and frame[2] == protocol.SUBMODE_COLOR_RGBWW
+            and any(frame[6:8])
+        ):
+            return (255, 180, 110)  # a 0x0D white: show warm white, not black
+        return (frame[3], frame[4], frame[5])
+    return None
+
+
+def _lights_for(direction: str, frame: bytes, note: str) -> None:
+    if note == "heartbeat":
+        return
+    if direction == "tx":
+        colour = _frame_colour(frame)
+        if colour is not None:
+            LIGHTS.fill(blinkt.visible(colour))
+        else:
+            LIGHTS.flash(7, (60, 60, 60))
+        return
+    if note == "reply":
+        LIGHTS.flash(6, (0, 0, 255))
+    elif note in ("ack", "ack_error"):
+        LIGHTS.flash(5, (0, 255, 0) if note == "ack" else (255, 80, 0))
+    elif note == "bad_checksum":
+        LIGHTS.flash(6, (255, 0, 255))
+    else:
+        LIGHTS.flash(6, (0, 40, 80))
+
 
 def software_version() -> str:
     try:
@@ -169,6 +216,10 @@ def describe_rx(frame: bytes) -> str:
     if not protocol.verify_frame(frame):
         return f"BAD CHECKSUM or length {len(frame)}"
     reply = protocol.parse_reply(frame)
+    if reply is None and frame[0] == protocol.TYPE_WRITE:
+        cmd = CMD_NAMES.get(frame[1], f"cmd {frame[1]:#04x}")
+        verdict = "accepted" if frame[2] == 0 else f"rejected ({frame[2]:#04x})"
+        return f"ack {cmd} write: {verdict}"
     if reply is None:
         kind = TYPE_NAMES.get(frame[0], f"type {frame[0]:#04x}")
         return f"{kind} cmd {frame[1]:#04x} (not a read reply, undecoded)"
@@ -260,6 +311,7 @@ class FrameLog:
         if redacted:
             entry["redacted"] = True
         self.write_line(entry)
+        _lights_for(direction, frame, note)
         if self.quiet_heartbeat and note == "heartbeat":
             return
         stamp = entry["at"][11:23]
@@ -291,6 +343,8 @@ class RigLink:
         self.acks = 0
         self.bad_frames = 0
         self.bgc: bytes | None = None
+        self.write_response = True  # set from the control characteristic's properties on connect
+        self.ack_log: list[tuple[int, int]] = []  # (cmd, status byte) of every 33 xx ack, in order
 
     async def __aenter__(self) -> RigLink:
         await self.connect()
@@ -313,7 +367,15 @@ class RigLink:
             await self.client.start_notify(const.STATUS_CHARACTERISTIC_UUID, self._on_notify)
         except BleakError as err:
             print(f"warning: could not subscribe to status notifications: {err}")
-        print(f"connected (mtu {getattr(self.client, 'mtu_size', '?')})", flush=True)
+        control = self.client.services.get_characteristic(const.CONTROL_CHARACTERISTIC_UUID)
+        props = list(control.properties) if control is not None else []
+        self.write_response = protocol.control_write_response(props)
+        print(
+            f"connected (mtu {getattr(self.client, 'mtu_size', '?')}); 2b11 {props or 'not found'}, "
+            f"writing {'with' if self.write_response else 'without'} response",
+            flush=True,
+        )
+        LIGHTS.set_base(0, (0, 80, 0))
         await self._read_bgc()
         if self.cipher_version == "v1":
             await self._handshake_v1()
@@ -377,6 +439,7 @@ class RigLink:
         return self.session.unwrap(data) if self.session is not None else bytes(data)
 
     async def disconnect(self) -> None:
+        LIGHTS.set_base(0, (0, 0, 0))
         if self._heartbeat is not None:
             self._heartbeat.cancel()
             with contextlib.suppress(asyncio.CancelledError):
@@ -400,7 +463,9 @@ class RigLink:
         self.log.record("tx", frame, note)
         try:
             await self.client.write_gatt_char(
-                const.CONTROL_CHARACTERISTIC_UUID, self._wrap(frame), response=self.session is None
+                const.CONTROL_CHARACTERISTIC_UUID,
+                self._wrap(frame),
+                response=self.write_response and self.session is None,
             )
             await asyncio.sleep(INTER_FRAME_DELAY)
         except (BleakError, TimeoutError, OSError) as err:
@@ -417,10 +482,13 @@ class RigLink:
         try:
             self.log.record("tx", frame, note)
             await self.client.write_gatt_char(
-                const.CONTROL_CHARACTERISTIC_UUID, self._wrap(frame), response=self.session is None
+                const.CONTROL_CHARACTERISTIC_UUID,
+                self._wrap(frame),
+                response=self.write_response and self.session is None,
             )
             return await asyncio.wait_for(future, QUERY_TIMEOUT)
         except TimeoutError:
+            LIGHTS.flash(6, (255, 0, 0), 0.3)
             print(
                 f"            -- no reply to {CMD_NAMES.get(command, hex(command))} query within {QUERY_TIMEOUT}s"
             )
@@ -442,6 +510,7 @@ class RigLink:
         if len(frame) == protocol.FRAME_LENGTH and frame[0] == protocol.TYPE_WRITE:
             # The firmware's own acknowledgement of a write: 33 <cmd> with byte 2 == 0.
             self.log.record("rx", frame, "ack" if frame[2] == 0 else "ack_error")
+            self.ack_log.append((frame[1], frame[2]))
             if frame[2] == 0:
                 self.acks += 1
             return
@@ -462,6 +531,10 @@ class RigLink:
         ):
             self.log.record("rx", frame, "reply")
             future.set_result(reply)
+            return
+        if reply.command == protocol.CMD_POWER and request is None:
+            # The answer to an AA 01 heartbeat: the light's power state, not news.
+            self.log.record("rx", frame, "heartbeat")
             return
         self.log.record("rx", frame, "unsolicited")
         self.unsolicited.append(reply)
@@ -616,6 +689,14 @@ async def run_query(link: RigLink, which: str) -> Any:
     return await link.query(build(), cmd)
 
 
+def _jsonable(value: Any) -> Any:
+    if isinstance(value, (tuple, list)):
+        return [_jsonable(v) for v in value]
+    if isinstance(value, bytes):
+        return value.hex()
+    return value
+
+
 async def run_actions(link: RigLink, actions: list[Action], verify: bool) -> list[str]:
     """Execute actions in order. Returns the verify verdict lines."""
     verdicts: list[str] = []
@@ -641,6 +722,19 @@ async def run_actions(link: RigLink, actions: list[Action], verify: bool) -> lis
                 verdict = await verify_action(link, action)
                 print(f"   => {verdict}")
                 verdicts.append(verdict)
+                link.log.write_line(
+                    {
+                        "summary": "verify",
+                        "schema": census.SCHEMA,
+                        "source": "pi",
+                        "at": now_iso(),
+                        "address": link.address,
+                        "action": action.name,
+                        "args": _jsonable(action.args),
+                        "echoed": ": ECHOED" in verdict or "SUB-MODE ECHOED" in verdict,
+                        "verdict": verdict,
+                    }
+                )
     return verdicts
 
 
@@ -734,8 +828,16 @@ async def resolve_settings(args: argparse.Namespace) -> Settings:
 
 async def cmd_scan(args: argparse.Namespace) -> None:
     kwargs = {"adapter": args.adapter} if args.adapter else {}
+    log = None
+    if args.log:
+        log = FrameLog(path=args.log)
+        log.session(adapter=args.adapter or "default", command="scan")
     print(f"scanning for {args.seconds}s ...", flush=True)
-    found = await BleakScanner.discover(timeout=args.seconds, return_adv=True, **kwargs)
+    LIGHTS.sweep((0, 200, 255))
+    try:
+        found = await BleakScanner.discover(timeout=args.seconds, return_adv=True, **kwargs)
+    finally:
+        LIGHTS.off()
     rows = []
     for device, adv in found.values():
         name = adv.local_name or device.name
@@ -746,6 +848,23 @@ async def cmd_scan(args: argparse.Namespace) -> None:
             continue
         profile = models.table_profile_for(model) if model else None
         enc = "?" if mfr is None or mfr.encrypted is None else ("yes" if mfr.encrypted else "no")
+        if log is not None and govee:
+            log.write_line(
+                {
+                    "summary": "advertisement",
+                    "schema": census.SCHEMA,
+                    "source": "pi",
+                    "at": now_iso(),
+                    "address": device.address.upper(),
+                    "name": name or "",
+                    "model": model,
+                    "known_model": bool(model and model in models.KNOWN_MODELS),
+                    "pact": mfr.pact if mfr else None,
+                    "flags": mfr.flags if mfr else None,
+                    "encrypted": mfr.encrypted if mfr else None,
+                    "rssi": adv.rssi,
+                }
+            )
         rows.append(
             (
                 device.address,
@@ -823,6 +942,304 @@ async def cmd_status(args: argparse.Namespace) -> None:
             await asyncio.sleep(args.hold)
 
 
+PROBE_DESCRIPTIONS = {
+    protocol.SUBMODE_COLOR_LEGACY: "0x02, the H6159 legacy colour",
+    protocol.SUBMODE_COLOR_DREAMCOLOR: "0x0B, the dreamcolor RGBIC colour",
+    protocol.SUBMODE_COLOR_RGBWW: "0x0D, the RGBWW bulb/lamp colour",
+    protocol.SUBMODE_COLOR_RGBIC: "0x15, the segmented RGBIC colour",
+}
+ANSWERS = {"y": "yes", "yes": "yes", "n": "no", "no": "no", "w": "wrong", "wrong": "wrong",
+           "p": "partial", "partial": "partial", "q": None, "quit": None}  # fmt: skip
+OUTCOMES = {"yes": "worked", "partial": "partial", "wrong": "partial", "no": "unchanged"}
+
+
+async def prompt_keeping_alive(link: RigLink, prompt: str) -> str | None:
+    """input() off the event loop, sending AA 01 heartbeats so the light keeps the link."""
+    loop = asyncio.get_running_loop()
+    answer = loop.run_in_executor(None, _read_line, prompt)
+    while True:
+        done, _ = await asyncio.wait({answer}, timeout=HEARTBEAT_INTERVAL)
+        if done:
+            return answer.result()
+        if link.connected and link.client is not None:
+            frame = protocol.heartbeat_frame()
+            link.log.record("tx", frame, "heartbeat")
+            with contextlib.suppress(BleakError, OSError):
+                await link.client.write_gatt_char(
+                    const.CONTROL_CHARACTERISTIC_UUID, link._wrap(frame), response=False
+                )
+
+
+def _read_line(prompt: str) -> str | None:
+    try:
+        return input(prompt)
+    except EOFError:
+        return None
+
+
+def make_asker(link: RigLink, address: str):  # type: ignore[no-untyped-def]
+    """The census ``ask`` callback: one question per probe write, logged as an observation."""
+
+    async def ask(submode: int, rgb: tuple[int, int, int]) -> str | None:
+        hex_rgb = " ".join(f"{c:02X}" for c in rgb)
+        colour = census.PROBE_COLOR_NAMES.get(submode, hex_rgb)
+        print(
+            f"\n  >>> wrote {PROBE_DESCRIPTIONS.get(submode, hex(submode))}: "
+            f"{colour.upper()} ({hex_rgb})"
+        )
+        while True:
+            raw = await prompt_keeping_alive(
+                link,
+                f"  >>> Did the light turn {colour}? [y]es / [n]o change / [w]rong colour / "
+                "[p]artly / [q]uit: ",
+            )
+            if raw is None:
+                return None
+            key = raw.strip().lower()
+            if key in ANSWERS:
+                answer = ANSWERS[key]
+                break
+            print("      (y, n, w, p or q)")
+        if answer is None:
+            print("  >>> stopping the probe; restoring the light")
+            return None
+        link.log.write_line(
+            {
+                "summary": "observation",
+                "schema": census.SCHEMA,
+                "source": "manual",
+                "at": now_iso(),
+                "address": address,
+                "observed": f"probe 0x{submode:02X} wrote {colour} ({hex_rgb}): {answer}",
+                "capability": "rgb",
+                "outcome": OUTCOMES[answer],
+                "dialect": f"0x{submode:02X}",
+            }
+        )
+        return answer
+
+    return ask
+
+
+def _manufacturer_data(device: Any) -> dict[int, bytes] | None:
+    """Manufacturer data from a BLEDevice found by address (BlueZ keeps it in details["props"])."""
+    if device is None:
+        return None
+    details = getattr(device, "details", None)
+    props = details.get("props") if isinstance(details, dict) else getattr(details, "props", None)
+    mfr = props.get("ManufacturerData") if isinstance(props, dict) else None
+    return mfr if isinstance(mfr, dict) else None
+
+
+SCALE_STEPS = (
+    # (level, question or None, what each scale predicts)
+    (25, None, "dim on either scale (25% or 10%)"),
+    (100, "Is it at or near FULL brightness now?", "full on a 0-100 light, about 40% on a 0-255 light"),
+    (255, "Did it get CLEARLY BRIGHTER again than a moment ago?", "brighter on a 0-255 light; same, or dimmer, on 0-100"),
+)  # fmt: skip
+
+
+def scale_from(
+    stored_255: bool | None, near_full_at_100: str | None, brighter_at_255: str | None
+) -> tuple[str | None, str]:
+    """``(scale, reason)`` from the read-backs and the two answers; scale None when they disagree."""
+    eyes_255 = near_full_at_100 == "no" and brighter_at_255 == "yes"
+    eyes_100 = near_full_at_100 == "yes" and brighter_at_255 == "no"
+    if brighter_at_255 == "dimmer":
+        # The H6006 (fw 1.00.38): acks and stores 255, renders it dimmer than
+        # 100. Most likely a signed or wrapped byte. A 0-100 light where any
+        # value above 100 must never be sent.
+        return "100", (
+            "255 looked DIMMER than 100: the firmware takes 0-100 and mis-renders larger "
+            "values (stored " + ("yes" if stored_255 else "unknown") + "); never send above 100"
+        )
+    if eyes_255:
+        return "255", "100 looked partial and 255 brighter" + (
+            ", and the light stored 255" if stored_255 else ""
+        )
+    if eyes_100:
+        return "100", "100 looked full and 255 changed nothing" + (
+            "" if stored_255 is False else " (the light did store 255: it clamps when rendering)"
+        )
+    if near_full_at_100 is None and brighter_at_255 is None and stored_255 is not None:
+        return ("255" if stored_255 else "100"), "read-back only: " + (
+            "the light stored 255" if stored_255 else "the light did not store 255"
+        )
+    return None, "the answers and the read-back do not agree; repeat the test"
+
+
+async def cmd_scale(args: argparse.Namespace) -> None:
+    """Brightness scale, one step at a time, with a question per step."""
+    settings = await resolve_settings(args)
+    log = FrameLog(
+        path=args.log,
+        address=args.address,
+        quiet_heartbeat=not args.show_heartbeat,
+        keep_secrets=args.keep_secrets,
+    )
+    log.session(adapter=args.adapter or "default", command="scale", cipher=args.cipher)
+    answers: dict[int, str | None] = {}
+    stored: dict[int, bool | None] = {}
+    async with RigLink(args.address, log, args.adapter, args.cipher) as link, link._busy:
+        before = await run_query(link, "brightness")
+        original = before.brightness_level if before is not None else None
+        power = await run_query(link, "power")
+        if power is not None and power.power is False:
+            await link.write(protocol.power_frame(True))
+        print(f"\n  brightness before the test: {original if original is not None else 'unknown'}")
+        for level, question, prediction in SCALE_STEPS:
+            await link.write(protocol.build_frame(protocol.CMD_BRIGHTNESS, [level]))
+            await asyncio.sleep(SETTLE_BEFORE_READBACK)
+            reply = await run_query(link, "brightness")
+            got = reply.brightness_level if reply is not None else None
+            stored[level] = None if got is None else got == level
+            print(
+                f"\n  >>> brightness byte {level} written; the light reports {got} ({prediction})"
+            )
+            if question is None:
+                await prompt_keeping_alive(
+                    link, "  >>> Look at it for a moment, then press Enter: "
+                )
+                continue
+            choices = (
+                "[y]es / [n]o / [d]immer / [q]uit" if level == 255 else "[y]es / [n]o / [q]uit"
+            )
+            while True:
+                raw = await prompt_keeping_alive(link, f"  >>> {question} {choices}: ")
+                key = (raw or "q").strip().lower()[:1]
+                if key in ("y", "n", "q") or (key == "d" and level == 255):
+                    break
+            if key == "q":
+                break
+            answers[level] = {"y": "yes", "n": "no", "d": "dimmer"}[key]
+            log.write_line(
+                {
+                    "summary": "observation", "schema": census.SCHEMA, "source": "manual", "at": now_iso(),
+                    "address": args.address.upper(), "observed": f"brightness {level}: {question} {answers[level]}",
+                    "capability": "brightness", "outcome": "worked", "dialect": None,
+                }
+            )  # fmt: skip
+        if original is not None and 1 <= original <= 255:
+            await link.write(protocol.build_frame(protocol.CMD_BRIGHTNESS, [original]))
+        if power is not None and power.power is False:
+            await link.write(protocol.power_frame(False))
+    scale, reason = scale_from(stored.get(255), answers.get(100), answers.get(255))
+    log.write_line(
+        {
+            "summary": "brightness_scale", "schema": census.SCHEMA, "source": "pi", "at": now_iso(),
+            "address": args.address.upper(), "model": settings.model, "scale": scale, "reason": reason,
+            "stored": {str(k): v for k, v in stored.items()}, "answers": {str(k): v for k, v in answers.items()},
+            "restored_to": original,
+        }
+    )  # fmt: skip
+    print(f"\n  brightness scale: {scale or 'undecided'} ({reason}); put back to {original}")
+
+
+WHITE_STEPS = (
+    # (kelvin, question or None)
+    (6500, None),
+    (2700, "Did it turn WARM, yellowish white?"),
+    (6500, "Did it turn COOL, bluish white?"),
+)
+# Written once each and read back only, to record the range limits.
+WHITE_LIMIT_PROBES = (2000, 9000)
+
+
+async def _read_mode(link: RigLink) -> Any:
+    reply = await run_query(link, "mode")
+    return reply.mode if reply is not None else None
+
+
+async def cmd_whites(args: argparse.Namespace) -> None:
+    """Colour temperature, warm and cool ends one at a time, with a question per step."""
+    settings = await resolve_settings(args)
+    submode = settings.submode
+    if submode not in (
+        protocol.SUBMODE_COLOR_LEGACY,
+        protocol.SUBMODE_COLOR_RGBWW,
+        protocol.SUBMODE_COLOR_RGBIC,
+    ):
+        sys.exit(
+            f"no colour-temperature frame for sub-mode {submode:#04x}; use --submode 02, 0D or 15"
+        )
+    log = FrameLog(
+        path=args.log,
+        address=args.address,
+        quiet_heartbeat=not args.show_heartbeat,
+        keep_secrets=args.keep_secrets,
+    )
+    log.session(adapter=args.adapter or "default", command="whites", cipher=args.cipher)
+    answers: dict[str, str] = {}
+    reported: dict[str, int | None] = {}
+    async with RigLink(args.address, log, args.adapter, args.cipher) as link, link._busy:
+        before = await _read_mode(link)
+        for n, (kelvin, question) in enumerate(WHITE_STEPS):
+            await link.write(protocol.color_temp_frame(kelvin, submode))
+            await asyncio.sleep(SETTLE_BEFORE_READBACK)
+            mode = await _read_mode(link)
+            got = mode.color_temp_kelvin if mode is not None else None
+            reported[f"{n}:{kelvin}"] = got
+            print(
+                f"\n  >>> white at {kelvin} K written; the light reports {got if got else 'no kelvin'}"
+            )
+            if question is None:
+                await prompt_keeping_alive(
+                    link, "  >>> Look at it for a moment, then press Enter: "
+                )
+                continue
+            while True:
+                raw = await prompt_keeping_alive(link, f"  >>> {question} [y]es / [n]o / [q]uit: ")
+                key = (raw or "q").strip().lower()[:1]
+                if key in ("y", "n", "q"):
+                    break
+            if key == "q":
+                break
+            answers[str(kelvin)] = "yes" if key == "y" else "no"
+            log.write_line(
+                {
+                    "summary": "observation", "schema": census.SCHEMA, "source": "manual", "at": now_iso(),
+                    "address": args.address.upper(), "observed": f"white {kelvin} K: {question} {answers[str(kelvin)]}",
+                    "capability": "rgbww", "outcome": "worked" if key == "y" else "unchanged",
+                    "dialect": f"0x{submode:02X}",
+                }
+            )  # fmt: skip
+        limits: dict[str, int | None] = {}
+        for kelvin in WHITE_LIMIT_PROBES:
+            await link.write(protocol.color_temp_frame(kelvin, submode))
+            await asyncio.sleep(SETTLE_BEFORE_READBACK)
+            mode = await _read_mode(link)
+            limits[str(kelvin)] = mode.color_temp_kelvin if mode is not None else None
+        restored = False
+        if before is not None and before.submode in (
+            protocol.SUBMODE_COLOR_LEGACY,
+            protocol.SUBMODE_COLOR_RGBWW,
+        ):
+            await link.write(
+                protocol.build_frame(protocol.CMD_MODE, [before.submode, *before.body])
+            )
+            restored = True
+    warm, cool = answers.get("2700"), answers.get("6500")
+    works = warm == "yes" and cool == "yes"
+    summary = (
+        "warm and cool both seen"
+        if works
+        else f"warm {warm or 'not asked'}, cool {cool or 'not asked'}"
+    )
+    lo, hi = limits.get("2000"), limits.get("9000")
+    range_text = f"range read back {lo or '?'}-{hi or '?'} K"
+    log.write_line(
+        {
+            "summary": "colour_temperature", "schema": census.SCHEMA, "source": "pi", "at": now_iso(),
+            "address": args.address.upper(), "model": settings.model, "submode": f"{submode:02X}",
+            "works": works, "answers": answers, "reported": reported, "limits": limits,
+            "result": f"{summary}; {range_text}", "restored": restored,
+        }
+    )  # fmt: skip
+    print(
+        f"\n  colour temperature in 0x{submode:02X}: {summary}; {range_text}; restored: {restored}"
+    )
+
+
 async def cmd_census(args: argparse.Namespace) -> None:
     """The shared read battery; one govee-evidence/1 summary line per run."""
     settings = await resolve_settings(args)
@@ -830,12 +1247,7 @@ async def cmd_census(args: argparse.Namespace) -> None:
     if not args.no_scan:
         kwargs = {"adapter": args.adapter} if args.adapter else {}
         device = await BleakScanner.find_device_by_address(args.address, timeout=8.0, **kwargs)
-        details = getattr(device, "details", None) if device is not None else None
-        mfr = (
-            getattr(getattr(details, "props", None), "get", lambda *_: None)("ManufacturerData")
-            if details
-            else None
-        )
+        mfr = _manufacturer_data(device)
         if isinstance(mfr, dict):
             adv = advertisement.parse_manufacturer_data({int(k): bytes(v) for k, v in mfr.items()})
         if adv is not None:
@@ -859,7 +1271,12 @@ async def cmd_census(args: argparse.Namespace) -> None:
         )
     async with RigLink(args.address, log, args.adapter, args.cipher) as link:
         async with link._busy:
-            result = await census.async_census(link, probe_writes=bool(args.probe))
+            result = await census.async_census(
+                link,
+                probe_writes=bool(args.probe),
+                ask=make_asker(link, args.address.upper()) if args.ask else None,
+                notify=(lambda text: print(f"\n  ... {text}")) if args.ask else None,
+            )
         result.acks = link.acks
         result.bad_frames = link.bad_frames
         verdict = census.classify(result, model=settings.model, adv=adv, bgc=link.bgc)
@@ -880,16 +1297,22 @@ async def cmd_census(args: argparse.Namespace) -> None:
         )
         if link.bgc is not None:
             record["bgc"] = link.bgc.hex()
+        record["verdict"] = f"{verdict.family} / {verdict.security} / {verdict.confidence}"
         log.write_line(record)
     print("\ncensus result:")
     for key in ("firmware", "hardware", "power", "brightness", "submode", "submode_name", "ic_count", "segments",
                 "light_count", "secret_present", "segment_page", "reads", "replies", "acks", "bad_frames",
-                "echoed", "restored", "restore_note", "error"):  # fmt: skip
+                "echoed", "probe_acks", "observed", "restored", "restore_note", "error"):  # fmt: skip
         if key in record:
             print(f"  {key:<15}: {record[key]}")
     print(f"  verdict        : {verdict.family} / {verdict.security} / {verdict.confidence}")
     for reason in verdict.reasons:
         print(f"                   - {reason}")
+    if LIGHTS.available:
+        print(
+            "  (verdict on the Blinkt: sparkle verified, amber inferred, red silent, purple encrypted)"
+        )
+        await asyncio.to_thread(LIGHTS.verdict, verdict.family, verdict.confidence)
     if result.secret_present and not args.keep_secrets:
         print(
             "  (the AA B1 secret was read; it is not in the log. --keep-secrets keeps it, for a private file)"
@@ -989,6 +1412,9 @@ def build_parser() -> argparse.ArgumentParser:
         help="run the AES-ECB+RC4 handshake and wrap every frame (experimental)",
     )
     parser.add_argument("-v", "--verbose", action="store_true", help="bleak debug logging")
+    parser.add_argument(
+        "--blinkt", action="store_true", help="show progress on a Pimoroni Blinkt (tools/blinkt.py)"
+    )
     sub = parser.add_subparsers(dest="command", required=True)
 
     p_scan = sub.add_parser("scan", help="list Govee lights in range")
@@ -1011,11 +1437,26 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p_status.add_argument("--candidates", help="active-probe order, e.g. 15,0D,02")
 
+    p_scale = sub.add_parser(
+        "scale", help="brightness scale, one step at a time with a question per step"
+    )
+    add_connect_args(p_scale)
+
+    p_whites = sub.add_parser(
+        "whites", help="colour temperature, warm and cool one at a time with a question per step"
+    )
+    add_connect_args(p_whites)
+
     p_census = sub.add_parser(
         "census",
         help="the shared read battery, with an optional probe; writes govee-evidence/1 records",
     )
     add_connect_args(p_census)
+    p_census.add_argument(
+        "--ask",
+        action="store_true",
+        help="with --probe: stop after each write and ask whether the light changed",
+    )
     p_census.add_argument(
         "--probe",
         action="store_true",
@@ -1047,13 +1488,22 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: Sequence[str] | None = None) -> None:
+    global LIGHTS
     args = build_parser().parse_args(argv)
     logging.basicConfig(level=logging.DEBUG if args.verbose else logging.WARNING)
+    if args.blinkt:
+        LIGHTS = blinkt.open_blinkt()
+        if not LIGHTS.available:
+            print(f"warning: --blinkt: {LIGHTS.reason}")
     try:
         if args.command == "scan":
             asyncio.run(cmd_scan(args))
         elif args.command == "status":
             asyncio.run(cmd_status(args))
+        elif args.command == "whites":
+            asyncio.run(cmd_whites(args))
+        elif args.command == "scale":
+            asyncio.run(cmd_scale(args))
         elif args.command == "census":
             asyncio.run(cmd_census(args))
         elif args.command == "send":
@@ -1066,6 +1516,8 @@ def main(argv: Sequence[str] | None = None) -> None:
         print("\ninterrupted")
     except (BleakError, probe.ProbeConnectionLost, OSError) as err:
         sys.exit(f"bluetooth error: {err}")
+    finally:
+        LIGHTS.close()
 
 
 if __name__ == "__main__":

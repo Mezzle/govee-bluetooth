@@ -9,7 +9,7 @@ status reads) is shared.
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 # Advertised local names look like ``ihoment_H6159_1A2B``, ``Govee_H6159_1A2B``,
 # ``GBK_H6159_1A2B`` or ``GVH6159_1A2B``. The app's ``BaseBleProcessor`` splits
@@ -32,6 +32,11 @@ class ModelProfile:
     color_submode: int
     brightness_scale: int  # 255 or 100
     scenes: dict[str, int]
+    # Colour-temperature range the firmware renders. The default is the
+    # widest any Govee family documents (strips, SPEC:1255-1256); a model
+    # whose firmware clamps tighter gets its measured range.
+    min_kelvin: int = 2000
+    max_kelvin: int = 9000
 
     @property
     def supports_scenes(self) -> bool:
@@ -152,13 +157,7 @@ RGBIC_MODELS: dict[str, str] = {
 
 def _family(template: ModelProfile, models: dict[str, str]) -> dict[str, ModelProfile]:
     return {
-        model: ModelProfile(
-            model=model,
-            description=description,
-            color_submode=template.color_submode,
-            brightness_scale=template.brightness_scale,
-            scenes=template.scenes,
-        )
+        model: replace(template, model=model, description=description)
         for model, description in models.items()
     }
 
@@ -175,10 +174,30 @@ _RGBWW_TV = ModelProfile(
     scenes=LEGACY_SCENES,
 )
 
+# Verified on hardware 2026-10-19/20 (Pi bench rig): an H6006 bulb on
+# firmware 1.00.38, hardware 1.02.01, pact 1/1, plaintext. Colour only in
+# 0x0D (0x02 / 0x0B / 0x15 are rejected with a 33 05 01 ack); white in 0x0D
+# with kelvin echoed and clamped to 2700-6500 K; brightness 0-100, where
+# a byte above 100 is acked but renders dimmer, so it must never be sent;
+# none of the legacy scene IDs visibly ran. Its 2b11 is write-without-
+# response only, which device.py now handles per connection.
+_RGBWW_BULB = ModelProfile(
+    model="H6006",
+    description="Govee RGBWW bulb (0x0D colour scheme)",
+    color_submode=0x0D,
+    brightness_scale=100,
+    scenes={},
+    # Read back on the bench: 2000 K -> 2700 K, 9000 K -> 6500 K; warm and
+    # cool both confirmed by eye (2026-10-20).
+    min_kelvin=2700,
+    max_kelvin=6500,
+)
+
 KNOWN_MODELS: dict[str, ModelProfile] = {
     **_family(_LEGACY_RGB, LEGACY_RGB_MODELS),
     **_family(_RGBIC, RGBIC_MODELS),
     "H6181": _RGBWW_TV,
+    "H6006": _RGBWW_BULB,
 }
 
 DEFAULT_MODEL = "H6159"
@@ -203,12 +222,10 @@ def table_profile_for(model: str | None) -> ModelProfile:
     """The static-table profile for a model, before any detected or manual override."""
     base = KNOWN_MODELS.get((model or "").upper(), _LEGACY_RGB)
     if model and model.upper() not in KNOWN_MODELS:
-        base = ModelProfile(
+        base = replace(
+            base,
             model=model.upper(),
             description=f"Govee {model.upper()} (unverified, using H6159 dialect)",
-            color_submode=base.color_submode,
-            brightness_scale=base.brightness_scale,
-            scenes=base.scenes,
         )
     return base
 
@@ -253,10 +270,4 @@ def profile_for(
         scale = brightness_scale
     if submode == base.color_submode and scale == base.brightness_scale:
         return base
-    return ModelProfile(
-        model=base.model,
-        description=description,
-        color_submode=submode,
-        brightness_scale=scale,
-        scenes=base.scenes,
-    )
+    return replace(base, description=description, color_submode=submode, brightness_scale=scale)

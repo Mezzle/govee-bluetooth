@@ -39,7 +39,7 @@ a citation; anything without one is marked unverified.
 | `BTLED` | github.com/chvolkmann/govee_btled (H6001 captures) | community capture |
 | `GBL` | github.com/Beshelmek/govee_ble_lights, `custom_components/govee-ble-lights/light.py` | community code |
 | `GOVEE-BLE` | github.com/Bluetooth-Devices/govee-ble, `src/govee_ble/parser.py` (clone at `/tmp/govee_ref/govee-ble`, 2026-10-19), the library behind HA core's `govee_ble` | HA core dependency |
-| `BENCH` | this repo's hardware sessions: H6159 (0x02), H6181 fw 2.03.11 (0x0D), 2026-10-18; `custom_components/govee_bluetooth/models.py:158-168` | hardware verified |
+| `BENCH` | this repo's hardware sessions: H6159 (0x02), H6181 fw 2.03.11 (0x0D), 2026-10-18; H6006 fw 1.00.38 / hw 1.02.01 (0x0D), 2026-10-19/20 with the Pi rig's census; `custom_components/govee_bluetooth/models.py` | hardware verified |
 | `REPO:<file>:<line>` | this repository, `custom_components/govee_bluetooth/` | - |
 
 Byte offsets in payload tables count from the first byte after `33 05` (the sub-mode
@@ -558,7 +558,7 @@ not.
 
 | kind | body after `0D` | who | source |
 |------|-----------------|-----|--------|
-| rgb_kelvin_tint | `R G B kHi kLo tR tG tB`; kelvin != 0 -> CCT mode, colour shown = tint | rgblight H6188 (`ModeParseStrategyConfig.a`); **H6181 fw 2.03.11 on the bench** | `YAML:629`, `KSY:313-314`, `KSY:1261-1265`, BENCH; H601C hypothesis `HGL:tools/ble/kaitai/speculative/h601c_status_reply.ksy:10-12` |
+| rgb_kelvin_tint | `R G B kHi kLo tR tG tB`; kelvin != 0 -> CCT mode, colour shown = tint | rgblight H6188 (`ModeParseStrategyConfig.a`); **H6181 fw 2.03.11 on the bench**; **H6006 fw 1.00.38 on the bench** (`0D 000000 0A8C 000000` in white, `0D 283CC8 0000 ...` after an RGB write), against `YAML:477`'s cct kind for bulblightv3 | `YAML:629`, `KSY:313-314`, `KSY:1261-1265`, BENCH; H601C hypothesis `HGL:tools/ble/kaitai/speculative/h601c_status_reply.ksy:10-12` |
 | rgb | `R G B` only, fanned across zones | H6052 (`H6052InfoDetail.parseModeValidBytes:323-346`) | `KSY:306-309` |
 | cct (default `SubMode4Color`) | `gradual kHi kLo`, no RGB | shared newdetail stack; bulblightv3 (`mode_0d_kind: cct`, `YAML:477`); H6061 reports `[R,G,B,kHi,kLo]` with no tint | `KSY:310-312`, `YAML:643`, `YAML:653` |
 
@@ -1234,3 +1234,24 @@ Added 2026-10-19 with the census work:
 Items 13 and 16 of section 13 are now implemented (`advertisement.py`,
 `census.needs_secret`, the census and the rig's `2b12` read); item 4 was
 already applied in `protocol.py`; the rest stand.
+
+### 14.1 H6006 bench findings (2026-10-19/20)
+
+From the Pi rig's census and stepped tests (`tools/govee_rig.py census --probe
+--ask`, `scale`, `verify`; evidence in a bench log, not committed):
+
+- `2b11` is **read + write-without-response only**; a write request gets
+  ATT "Write Not Permitted" and the bulb drops the link. egold555 reports the
+  same on the H6004. `protocol.control_write_response()` picks the mode from
+  the characteristic's properties. No `2b12` characteristic.
+- The firmware acks every write on `2b10`: `33 05 00` for a `0x0D` colour,
+  `33 05 01` for `0x02`, `0x0B` and `0x15`. The ack is an application-level
+  accept / reject, a stronger signal than an echo; the census records it.
+- The `0x0D` reply is the rgb_kelvin_tint kind, RGB zero in white mode.
+- Kelvin: 4300 K echoed; 2000 K and 9000 K come back as 2700 K and 6500 K
+  (app: bulbs 2700-6500 K, `SPEC:1255-1256`); warm and cool confirmed by eye
+  with `govee_rig.py whites`. `ModelProfile.min_kelvin` / `max_kelvin` carry it.
+- Brightness: `33 04 <n>` is acked and stored for any byte, but above 100
+  renders *dimmer* than 100 (255 dimmer; 200 hard to tell from 100, which
+  fits a modulo-101 wrap). Scale 0-100; never send more.
+- Legacy scene IDs: stored and reported back, none visibly ran.

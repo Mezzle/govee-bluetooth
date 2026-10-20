@@ -58,6 +58,23 @@ def inject_advertisement(hass: HomeAssistant, info: BluetoothServiceInfoBleak) -
     get_manager().scanner_adv_received(info)
 
 
+class _FakeCharacteristic:
+    def __init__(self, properties: tuple[str, ...]) -> None:
+        self.properties = list(properties)
+
+
+class _FakeServices:
+    def __init__(self, client: FakeGoveeClient) -> None:
+        self._client = client
+
+    def get_characteristic(self, uuid: str) -> _FakeCharacteristic | None:
+        if uuid.endswith("2b11"):
+            return _FakeCharacteristic(self._client.control_properties)
+        if uuid.endswith("2b10"):
+            return _FakeCharacteristic(("read", "notify"))
+        return None
+
+
 class FakeGoveeClient:
     """Stand-in for a BleakClient connected to an H6159.
 
@@ -73,9 +90,15 @@ class FakeGoveeClient:
         rgb=(16, 32, 48),
         speaks: int | None = protocol.SUBMODE_COLOR_LEGACY,
         fail_after_writes: int | None = None,
+        control_properties: tuple[str, ...] = ("write", "write-without-response"),
     ) -> None:
         self.is_connected = True
         self.writes: list[bytes] = []
+        self.write_responses: list[bool | None] = []
+        # What the control characteristic offers. The H6006 bulb on the bench
+        # offers ("read", "write-without-response") and refuses a write request.
+        self.control_properties = control_properties
+        self.services = _FakeServices(self)
         self.disconnects = 0
         self._notify: Callable | None = None
         # The colour sub-mode this firmware understands. A ``33 05 <speaks>``
@@ -109,7 +132,12 @@ class FakeGoveeClient:
         frame = bytes(data)
         if not self.is_connected:
             raise BleakError("not connected")
+        if response and "write" not in self.control_properties:
+            # What the H6006 did on the bench: ATT error, then it drops the link.
+            self.is_connected = False
+            raise BleakError("GATT Protocol Error: Write Not Permitted")
         self.writes.append(frame)
+        self.write_responses.append(response)
         if frame[0] == protocol.TYPE_WRITE:
             if self.fail_after_writes is not None and len(self.commands) > self.fail_after_writes:
                 self.is_connected = False

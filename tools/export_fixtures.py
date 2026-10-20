@@ -33,6 +33,11 @@ PACKAGE_DIR = REPO_ROOT / "custom_components" / "govee_bluetooth"
 FIXTURE = REPO_ROOT / "fixtures" / "govee-models.json"
 
 
+def load_census():  # type: ignore[no-untyped-def]
+    load_protocol()
+    return importlib.import_module("custom_components.govee_bluetooth.census")
+
+
 def load_protocol():  # type: ignore[no-untyped-def]
     for name, path in (
         ("custom_components", REPO_ROOT / "custom_components"),
@@ -129,6 +134,11 @@ def frame_vectors(protocol) -> list[tuple[str, str]]:  # type: ignore[no-untyped
         ("read_light_count", protocol.light_count_query_frame()),
         ("read_secret", protocol.secret_query_frame()),
         ("read_segment_colors_1", protocol.segment_colors_query_frame(1)),
+    ]
+    probe = load_census().PROBE_COLORS
+    vectors += [
+        (f"probe_{submode:02X}", protocol.rgb_frame(*probe[submode], submode=submode))
+        for submode in (0x02, 0x0B, 0x0D, 0x15)
     ]
     return [(name, frame.hex()) for name, frame in vectors]
 

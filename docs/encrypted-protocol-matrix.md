@@ -35,6 +35,7 @@ bench. Firmware and hardware versions are listed where the source gave them.
 | --- | --- | --- | --- | --- |
 | H6159 | plaintext | plaintext 0x02 | us, fw 1.07.02 | verified |
 | H6181 | plaintext | plaintext 0x0D | us, fw 2.03.11 | verified |
+| H6006 | pact 1/1, flags 02, plaintext; no `2b12` | plaintext 0x0D; `2b11` write-without-response only | us, fw 1.00.38 / hw 1.02.01 | verified |
 | H617A | pact 10/1, plaintext | plaintext 0x15; `secret_key_pairing` family | GENZERO fw 3.02.24 / hw 3.01.01; HGL; rnodern | community-verified plaintext control without a secret |
 | H6199 | pact 2/1 (hw 3.02.01, fw 1.10.04) and pact 1/1 (hw 1.00.01) | plaintext 0x15 / 0x0B by pact | HGL | community-verified (pact 2); 0x0B app-derived |
 | H60A6 | `secret_key_pairing`, V1 cipher on the wire | AES-ECB+RC4 | govee-ble-local live reference; its `decrypt_btsnoop.py` was written for this light | community-verified V1 |

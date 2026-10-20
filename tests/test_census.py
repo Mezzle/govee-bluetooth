@@ -44,6 +44,10 @@ class FakeLight:
         self.drop_after_writes = drop_after_writes
         self.writes: list[bytes] = []
         self.queries: list[bytes] = []
+        # A verbatim mode body (H6006: 0D 000000 0A8C 000000), reported while
+        # the light is still in that sub-mode and has not taken an RGB write.
+        self.raw_mode_body: list[int] | None = None
+        self.raw_mode_submode: int | None = None
 
     async def write(self, frame: bytes) -> None:
         self.writes.append(frame)
@@ -57,6 +61,8 @@ class FakeLight:
         elif cmd == protocol.CMD_BRIGHTNESS:
             self.brightness = payload[0]
         elif cmd == protocol.CMD_MODE and payload[0] == self.speaks:
+            self.raw_mode_body = list(payload[1:9])
+            self.raw_mode_submode = payload[0]
             self.submode = payload[0]
             offset = 2 if payload[0] == 0x15 else 1
             self.rgb = tuple(payload[offset : offset + 3])
@@ -71,6 +77,8 @@ class FakeLight:
             return protocol.parse_reply(_reply(command, self.brightness))
         if command == protocol.CMD_MODE:
             body = [self.submode]
+            if self.raw_mode_body is not None and self.submode == self.raw_mode_submode:
+                return protocol.parse_reply(_reply(command, self.submode, *self.raw_mode_body))
             if self.submode in (0x02, 0x0D):
                 body += list(self.rgb)
             elif self.submode == 0x15:
@@ -96,6 +104,13 @@ class FakeLight:
             records = [0x64, *self.rgb] * 3
             return protocol.parse_reply(_reply(command, frame[2], *records))
         return None
+
+
+@pytest.fixture(autouse=True)
+def _no_reset_wait(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The between-dialect baseline pause is for human eyes, not tests."""
+    monkeypatch.setattr(census, "RESET_SETTLE_S", 0)
+    monkeypatch.setattr(census, "RESET_SETTLE_ASKING_S", 0)
 
 
 H617A_ADV = parse_raw(bytes.fromhex("0388ec000a0101"))
@@ -263,3 +278,141 @@ def test_probe_colours_are_distinct_and_safe() -> None:
     assert len(set(colours)) == len(colours)
     for rgb in colours:
         assert all(0 < c < 0xFF for c in rgb)
+
+
+async def test_white_0d_state_is_restored_verbatim_not_as_black() -> None:
+    """The H6006 on the bench: 0x0D white at 2700 K, RGB and tint zero."""
+    light = FakeLight(speaks=0x0D)
+    light.raw_mode_body = [0, 0, 0, 0x0A, 0x8C, 0, 0, 0]
+    light.raw_mode_submode = 0x0D
+    result = await census.async_census(light, probe_writes=True)
+    assert result.mode is not None and result.mode.color_temp_kelvin == 2700
+    restore = [w for w in light.writes if w[1] == protocol.CMD_MODE][-1]
+    assert restore == protocol.build_frame(protocol.CMD_MODE, [0x0D, 0, 0, 0, 0x0A, 0x8C, 0, 0, 0])
+    assert result.restored == "full"
+
+
+class AckingLight(FakeLight):
+    """Acks every mode write the way the H6006 did: 33 05 00 if understood, 33 05 01 if not."""
+
+    def __init__(self, **kwargs) -> None:
+        super().__init__(**kwargs)
+        self.ack_log: list[tuple[int, int]] = []
+
+    async def write(self, frame: bytes) -> None:
+        await super().write(frame)
+        if frame[1] == protocol.CMD_MODE:
+            self.ack_log.append((protocol.CMD_MODE, 0 if frame[2] == self.speaks else 1))
+
+
+async def test_probe_records_write_acks_per_dialect() -> None:
+    light = AckingLight(speaks=0x0D)
+    result = await census.async_census(light, probe_writes=True)
+    assert result.probe_acks == {
+        0x02: "rejected",
+        0x0B: "rejected",
+        0x0D: "accepted",
+        0x15: "rejected",
+    }
+    verdict = census.classify(result, model="H6006", adv=None)
+    assert any("accepted 0x0d; rejected 0x02, 0x0b, 0x15" in r for r in verdict.reasons)
+    rec = census.summary_record(
+        result,
+        address="x",
+        name=None,
+        model="H6006",
+        adv=None,
+        rssi=None,
+        source="pi",
+        at="t",
+        software="s",
+    )
+    assert rec["probe_acks"] == {
+        "02": "rejected",
+        "0B": "rejected",
+        "0D": "accepted",
+        "15": "rejected",
+    }
+
+
+async def test_probe_asks_after_each_write_before_reading_back() -> None:
+    light = FakeLight(speaks=0x0D)
+    asked: list[tuple[int, int]] = []
+
+    async def ask(submode: int, rgb: tuple[int, int, int]) -> str | None:
+        # The write for this dialect is the last thing sent; no read-back yet.
+        asked.append((submode, len(light.queries)))
+        assert light.writes[-1][2] == submode
+        return "yes" if submode == 0x0D else "no"
+
+    result = await census.async_census(light, probe_writes=True, ask=ask)
+    assert [s for s, _ in asked] == list(census.PROBE_ORDER)
+    assert result.observed == {0x02: "no", 0x0B: "no", 0x0D: "yes", 0x15: "no"}
+    assert any(
+        "operator saw a change on 0x0d" in r
+        for r in census.classify(result, model="H6006", adv=None).reasons
+    )
+
+
+async def test_quitting_the_questions_still_restores() -> None:
+    light = FakeLight(speaks=0x0D, power=False)
+
+    async def ask(submode: int, rgb: tuple[int, int, int]) -> str | None:
+        return None if submode == 0x0B else "no"
+
+    result = await census.async_census(light, probe_writes=True, ask=ask)
+    assert result.aborted and result.observed == {0x02: "no"}
+    assert result.restored == "full" and light.power is False
+
+
+def test_probe_colours_are_far_apart_to_the_eye() -> None:
+    colours = list(census.PROBE_COLORS.values())
+    for i, a in enumerate(colours):
+        for b in colours[i + 1 :]:
+            assert sum(abs(x - y) for x, y in zip(a, b, strict=True)) > 150
+    assert set(census.PROBE_COLOR_NAMES) == set(census.PROBE_COLORS)
+
+
+async def test_probe_goes_back_to_the_baseline_between_dialects(monkeypatch) -> None:
+    monkeypatch.setattr(census, "RESET_SETTLE_S", 0)
+    light = FakeLight(speaks=0x0D)
+    light.raw_mode_body = [0, 0, 0, 0x0A, 0x8C, 0, 0, 0]
+    light.raw_mode_submode = 0x0D
+    seen_before_write: list[tuple[int, ...]] = []
+
+    async def ask(submode: int, rgb: tuple[int, int, int]) -> str | None:
+        # The write just before this probe write was the reset to 2700 K white.
+        if submode != census.PROBE_ORDER[0]:
+            seen_before_write.append(tuple(light.writes[-2][2:8]))
+        return "yes" if submode == 0x0D else "no"
+
+    result = await census.async_census(light, probe_writes=True, ask=ask)
+    assert seen_before_write == [(0x0D, 0, 0, 0, 0x0A, 0x8C)] * 3
+    assert result.echoed == [0x0D] and result.restored == "full"
+
+
+async def test_baseline_reset_is_announced_to_the_watcher() -> None:
+    light = FakeLight(speaks=0x0D)
+    events: list[str] = []
+
+    async def ask(submode: int, rgb: tuple[int, int, int]) -> str | None:
+        events.append(f"ask {submode:02X}")
+        return "no"
+
+    await census.async_census(
+        light, probe_writes=True, ask=ask, notify=lambda t: events.append("reset")
+    )
+    # Every question after the first is preceded by an announced reset.
+    assert events == ["ask 02", "reset", "ask 0B", "reset", "ask 0D", "reset", "ask 15"]
+
+
+async def test_no_reset_is_announced_when_the_start_was_a_scene() -> None:
+    light = FakeLight(speaks=0x0D, submode=0x04)  # H6006 left in scene 0x0F by the scene stage
+    notes: list[str] = []
+
+    async def ask(submode: int, rgb: tuple[int, int, int]) -> str | None:
+        return "no"
+
+    result = await census.async_census(light, probe_writes=True, ask=ask, notify=notes.append)
+    assert len(notes) == 1 and "scene" in notes[0] and "no reset between colours" in notes[0]
+    assert result.restored == "power"

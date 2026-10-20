@@ -4,116 +4,610 @@
   "title": "Govee BLE evidence record (govee-evidence/1)",
   "description": "One JSON object per line. Three kinds: frame records (no 'summary' key; the Pi bench rig's shape, unchanged since before this schema), a 'session' header, and one 'light' summary per visited light. Producers: tools/govee_rig.py (source 'pi'), the Dance Party Flipper app (source 'dance_party'), the Dance Party ESP32 image (source 'esp32'), and tools/govee_report.py when it re-emits normalised records. Unknown keys must be ignored by consumers; producers may only add keys within a schema version.",
   "oneOf": [
-    { "$ref": "#/$defs/frame" },
-    { "$ref": "#/$defs/session" },
-    { "$ref": "#/$defs/light" },
-    { "$ref": "#/$defs/observation" }
+    {
+      "$ref": "#/$defs/frame"
+    },
+    {
+      "$ref": "#/$defs/session"
+    },
+    {
+      "$ref": "#/$defs/light"
+    },
+    {
+      "$ref": "#/$defs/observation"
+    },
+    {
+      "$ref": "#/$defs/advertisement"
+    },
+    {
+      "$ref": "#/$defs/verify"
+    },
+    {
+      "$ref": "#/$defs/brightness_scale"
+    },
+    {
+      "$ref": "#/$defs/colour_temperature"
+    }
   ],
   "$defs": {
-    "hex20": { "type": "string", "pattern": "^[0-9a-fA-F]{40}$" },
-    "source": { "type": "string", "enum": ["pi", "dance_party", "esp32", "home_assistant", "manual"] },
+    "hex20": {
+      "type": "string",
+      "pattern": "^[0-9a-fA-F]{40}$"
+    },
+    "source": {
+      "type": "string",
+      "enum": [
+        "pi",
+        "dance_party",
+        "esp32",
+        "home_assistant",
+        "manual"
+      ]
+    },
     "frame": {
       "type": "object",
       "description": "One frame in either direction. 'frame' is the 20-byte wire frame as hex, after redaction if 'redacted' is true (secret bytes zeroed, checksum recomputed).",
-      "required": ["at", "direction", "frame", "note", "decoded", "address"],
-      "not": { "required": ["summary"] },
+      "required": [
+        "at",
+        "direction",
+        "frame",
+        "note",
+        "decoded",
+        "address"
+      ],
+      "not": {
+        "required": [
+          "summary"
+        ]
+      },
       "properties": {
-        "at": { "type": "string", "description": "ISO 8601 timestamp, or 'T+seconds.millis' uptime on clockless hardware" },
-        "direction": { "type": "string", "enum": ["tx", "rx"] },
-        "frame": { "$ref": "#/$defs/hex20" },
+        "at": {
+          "type": "string",
+          "description": "ISO 8601 timestamp, or 'T+seconds.millis' uptime on clockless hardware"
+        },
+        "direction": {
+          "type": "string",
+          "enum": [
+            "tx",
+            "rx"
+          ]
+        },
+        "frame": {
+          "$ref": "#/$defs/hex20"
+        },
         "note": {
           "type": "string",
           "description": "Why the frame was sent or how it was classified: command, query, reply, timeout (frame = the unanswered request), bad_checksum, ack, ack_error, unsolicited, unparsed, heartbeat, probe, restore, handshake"
         },
-        "decoded": { "type": "string" },
-        "address": { "type": "string" },
-        "redacted": { "type": "boolean" },
-        "source": { "$ref": "#/$defs/source" }
+        "decoded": {
+          "type": "string"
+        },
+        "address": {
+          "type": "string"
+        },
+        "redacted": {
+          "type": "boolean"
+        },
+        "source": {
+          "$ref": "#/$defs/source"
+        }
       }
     },
     "session": {
       "type": "object",
-      "required": ["summary", "schema", "source"],
+      "required": [
+        "summary",
+        "schema",
+        "source"
+      ],
       "properties": {
-        "summary": { "const": "session" },
-        "schema": { "const": "govee-evidence/1" },
-        "source": { "$ref": "#/$defs/source" },
-        "at": { "type": "string" },
-        "software": { "type": "string", "description": "producer and version, e.g. 'govee-dance-party 0.2', 'govee-party-esp32 0.2 bridge 4', 'govee_rig.py <git sha>'" },
-        "board": { "type": "string" },
-        "transport": { "type": "string" },
-        "adapter": { "type": "string" },
-        "host": { "type": "string" },
-        "lights": { "type": "integer", "minimum": 0 },
-        "probe": { "type": "boolean" },
-        "operator_note": { "type": "string" }
+        "summary": {
+          "const": "session"
+        },
+        "schema": {
+          "const": "govee-evidence/1"
+        },
+        "source": {
+          "$ref": "#/$defs/source"
+        },
+        "at": {
+          "type": "string"
+        },
+        "software": {
+          "type": "string",
+          "description": "producer and version, e.g. 'govee-dance-party 0.2', 'govee-party-esp32 0.2 bridge 4', 'govee_rig.py <git sha>'"
+        },
+        "board": {
+          "type": "string"
+        },
+        "transport": {
+          "type": "string"
+        },
+        "adapter": {
+          "type": "string"
+        },
+        "host": {
+          "type": "string"
+        },
+        "lights": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "probe": {
+          "type": "boolean"
+        },
+        "operator_note": {
+          "type": "string"
+        }
       }
     },
     "light": {
       "type": "object",
-      "required": ["summary", "schema", "source", "address", "model", "connected", "subscribed", "silent", "probed"],
+      "required": [
+        "summary",
+        "schema",
+        "source",
+        "address",
+        "model",
+        "connected",
+        "subscribed",
+        "silent",
+        "probed"
+      ],
       "properties": {
-        "summary": { "const": "light" },
-        "schema": { "const": "govee-evidence/1" },
-        "source": { "$ref": "#/$defs/source" },
-        "at": { "type": "string" },
-        "software": { "type": "string" },
-        "address": { "type": "string" },
-        "name": { "type": "string" },
-        "model": { "type": "string" },
-        "known_model": { "type": "boolean", "description": "the SKU is in the producer's model tables" },
-        "rssi": { "type": ["integer", "null"] },
-        "pact": { "type": ["string", "null"], "description": "'<pactType>/<pactCode>' from the manufacturer data" },
-        "flags": { "type": ["integer", "null"] },
-        "encrypted": { "type": ["boolean", "null"], "description": "advertisement flags bit 6; null when no manufacturer data was seen" },
-        "dialect": { "type": "string", "description": "the colour dialect the producer would use: RGB (0x02), RGBWW (0x0D), RGBIC (0x15), Dream (0x0B)" },
-        "dialect_source": { "type": "string", "enum": ["pact", "table", "default", "detected", "manual"] },
-        "secret_family": { "type": "boolean", "description": "table fact: the app family is tagged secret_key_pairing" },
-        "connected": { "type": "boolean" },
-        "subscribed": { "type": "boolean" },
-        "silent": { "type": "boolean", "description": "connected and subscribed, not one verified AA reply" },
-        "aborted": { "type": "boolean" },
-        "gatt": { "type": "string", "description": "Govee characteristics present, e.g. '1910/2b11/2b10/2b12', '1910/2b11/2b10+ffe0', 'none'" },
-        "bgc": { "type": "string", "description": "raw bytes of characteristic 2b12 as hex" },
-        "reads": { "type": "integer" },
-        "replies": { "type": "integer" },
-        "bad_frames": { "type": "integer" },
-        "acks": { "type": "integer", "description": "33 xx echoes with byte 2 == 0 seen on the notify characteristic" },
-        "odd_notifies": { "type": "integer", "description": "notifications that were not 20 bytes (ESP32)" },
-        "power": { "type": "boolean" },
-        "brightness": { "type": "integer" },
-        "submode": { "type": "string", "description": "'<submode hex> <next four bytes hex>'" },
-        "submode_name": { "type": "string" },
-        "firmware": { "type": "string" },
-        "hardware": { "type": "string" },
-        "ic_count": { "type": "integer" },
-        "segments": { "type": "integer" },
-        "light_count": { "type": "integer" },
-        "secret_present": { "type": "boolean", "description": "AA B1 answered 01 + 8 bytes (unbound light)" },
-        "secret": { "type": "string", "description": "only in private captures; never in shared evidence" },
-        "segment_page": { "type": "boolean" },
-        "probed": { "type": "boolean" },
-        "echoed": { "type": "string", "description": "comma-separated sub-mode bytes whose probe colour echoed, e.g. '02' or '0D,15'" },
-        "restored": { "type": "string", "enum": ["full", "power", "none"] },
-        "restore_note": { "type": "string" },
-        "error": { "type": "string" },
-        "truncated": { "type": "boolean", "description": "the producer ran out of buffer; later fields are missing" }
+        "summary": {
+          "const": "light"
+        },
+        "schema": {
+          "const": "govee-evidence/1"
+        },
+        "source": {
+          "$ref": "#/$defs/source"
+        },
+        "at": {
+          "type": "string"
+        },
+        "software": {
+          "type": "string"
+        },
+        "address": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "model": {
+          "type": "string"
+        },
+        "known_model": {
+          "type": "boolean",
+          "description": "the SKU is in the producer's model tables"
+        },
+        "rssi": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "pact": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "'<pactType>/<pactCode>' from the manufacturer data"
+        },
+        "flags": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "encrypted": {
+          "type": [
+            "boolean",
+            "null"
+          ],
+          "description": "advertisement flags bit 6; null when no manufacturer data was seen"
+        },
+        "dialect": {
+          "type": "string",
+          "description": "the colour dialect the producer would use: RGB (0x02), RGBWW (0x0D), RGBIC (0x15), Dream (0x0B)"
+        },
+        "dialect_source": {
+          "type": "string",
+          "enum": [
+            "pact",
+            "table",
+            "default",
+            "detected",
+            "manual"
+          ]
+        },
+        "secret_family": {
+          "type": "boolean",
+          "description": "table fact: the app family is tagged secret_key_pairing"
+        },
+        "connected": {
+          "type": "boolean"
+        },
+        "subscribed": {
+          "type": "boolean"
+        },
+        "silent": {
+          "type": "boolean",
+          "description": "connected and subscribed, not one verified AA reply"
+        },
+        "aborted": {
+          "type": "boolean"
+        },
+        "gatt": {
+          "type": "string",
+          "description": "Govee characteristics present, e.g. '1910/2b11/2b10/2b12', '1910/2b11/2b10+ffe0', 'none'"
+        },
+        "bgc": {
+          "type": "string",
+          "description": "raw bytes of characteristic 2b12 as hex"
+        },
+        "reads": {
+          "type": "integer"
+        },
+        "replies": {
+          "type": "integer"
+        },
+        "bad_frames": {
+          "type": "integer"
+        },
+        "acks": {
+          "type": "integer",
+          "description": "33 xx echoes with byte 2 == 0 seen on the notify characteristic"
+        },
+        "odd_notifies": {
+          "type": "integer",
+          "description": "notifications that were not 20 bytes (ESP32)"
+        },
+        "power": {
+          "type": "boolean"
+        },
+        "brightness": {
+          "type": "integer"
+        },
+        "submode": {
+          "type": "string",
+          "description": "'<submode hex> <next four bytes hex>'"
+        },
+        "submode_name": {
+          "type": "string"
+        },
+        "firmware": {
+          "type": "string"
+        },
+        "hardware": {
+          "type": "string"
+        },
+        "ic_count": {
+          "type": "integer"
+        },
+        "segments": {
+          "type": "integer"
+        },
+        "light_count": {
+          "type": "integer"
+        },
+        "secret_present": {
+          "type": "boolean",
+          "description": "AA B1 answered 01 + 8 bytes (unbound light)"
+        },
+        "secret": {
+          "type": "string",
+          "description": "only in private captures; never in shared evidence"
+        },
+        "segment_page": {
+          "type": "boolean"
+        },
+        "probed": {
+          "type": "boolean"
+        },
+        "echoed": {
+          "type": "string",
+          "description": "comma-separated sub-mode bytes whose probe colour echoed, e.g. '02' or '0D,15'"
+        },
+        "restored": {
+          "type": "string",
+          "enum": [
+            "full",
+            "power",
+            "none"
+          ]
+        },
+        "restore_note": {
+          "type": "string"
+        },
+        "error": {
+          "type": "string"
+        },
+        "truncated": {
+          "type": "boolean",
+          "description": "the producer ran out of buffer; later fields are missing"
+        },
+        "verdict": {
+          "type": "string",
+          "description": "the producer's own classification, 'family / security / confidence' (the report reclassifies from the evidence)"
+        }
       }
     },
     "observation": {
       "type": "object",
       "description": "A human observation added after the fact (what the strip actually did), the only way an 'observed' confidence is reached.",
-      "required": ["summary", "schema", "source", "address", "observed"],
+      "required": [
+        "summary",
+        "schema",
+        "source",
+        "address",
+        "observed"
+      ],
       "properties": {
-        "summary": { "const": "observation" },
-        "schema": { "const": "govee-evidence/1" },
-        "source": { "const": "manual" },
-        "at": { "type": "string" },
-        "address": { "type": "string" },
-        "observed": { "type": "string", "description": "free text, e.g. 'probe 0x15 turned the whole strip dark blue; 0x0B did nothing'" },
-        "capability": { "type": "string", "enum": ["power", "brightness", "rgb", "rgbww", "segments", "scene", "music", "other"] },
-        "outcome": { "type": "string", "enum": ["worked", "partial", "failed", "unchanged"] },
-        "dialect": { "type": "string" }
+        "summary": {
+          "const": "observation"
+        },
+        "schema": {
+          "const": "govee-evidence/1"
+        },
+        "source": {
+          "const": "manual"
+        },
+        "at": {
+          "type": "string"
+        },
+        "address": {
+          "type": "string"
+        },
+        "observed": {
+          "type": "string",
+          "description": "free text, e.g. 'probe 0x15 turned the whole strip dark blue; 0x0B did nothing'"
+        },
+        "capability": {
+          "type": "string",
+          "enum": [
+            "power",
+            "brightness",
+            "rgb",
+            "rgbww",
+            "segments",
+            "scene",
+            "music",
+            "other"
+          ]
+        },
+        "outcome": {
+          "type": "string",
+          "enum": [
+            "worked",
+            "partial",
+            "failed",
+            "unchanged"
+          ]
+        },
+        "dialect": {
+          "type": "string"
+        }
+      }
+    },
+    "advertisement": {
+      "type": "object",
+      "description": "One Govee light seen in a scan (rig scan --log).",
+      "required": [
+        "summary",
+        "schema",
+        "source",
+        "address"
+      ],
+      "properties": {
+        "summary": {
+          "const": "advertisement"
+        },
+        "schema": {
+          "const": "govee-evidence/1"
+        },
+        "source": {
+          "$ref": "#/$defs/source"
+        },
+        "at": {
+          "type": "string"
+        },
+        "address": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "model": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "known_model": {
+          "type": "boolean"
+        },
+        "pact": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "flags": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "encrypted": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "rssi": {
+          "type": "integer"
+        }
+      }
+    },
+    "verify": {
+      "type": "object",
+      "description": "One write-then-read-back verdict from the rig's verify command.",
+      "required": [
+        "summary",
+        "schema",
+        "source",
+        "address",
+        "action",
+        "verdict"
+      ],
+      "properties": {
+        "summary": {
+          "const": "verify"
+        },
+        "schema": {
+          "const": "govee-evidence/1"
+        },
+        "source": {
+          "$ref": "#/$defs/source"
+        },
+        "at": {
+          "type": "string"
+        },
+        "address": {
+          "type": "string"
+        },
+        "action": {
+          "type": "string",
+          "description": "power, brightness, rgb, ct, scene"
+        },
+        "args": {
+          "type": "array"
+        },
+        "echoed": {
+          "type": "boolean",
+          "description": "the light reported back what was written"
+        },
+        "verdict": {
+          "type": "string"
+        }
+      }
+    },
+    "brightness_scale": {
+      "type": "object",
+      "description": "Result of the rig's stepped brightness-scale test (rig scale).",
+      "required": [
+        "summary",
+        "schema",
+        "source",
+        "address",
+        "scale"
+      ],
+      "properties": {
+        "summary": {
+          "const": "brightness_scale"
+        },
+        "schema": {
+          "const": "govee-evidence/1"
+        },
+        "source": {
+          "$ref": "#/$defs/source"
+        },
+        "at": {
+          "type": "string"
+        },
+        "address": {
+          "type": "string"
+        },
+        "model": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "scale": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "'255', '100', or null when the answers and read-back disagree"
+        },
+        "reason": {
+          "type": "string"
+        },
+        "stored": {
+          "type": "object",
+          "description": "per written level, whether the light reported it back"
+        },
+        "answers": {
+          "type": "object"
+        },
+        "restored_to": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        }
+      }
+    },
+    "colour_temperature": {
+      "type": "object",
+      "description": "Result of the rig's stepped colour-temperature test (rig whites).",
+      "required": [
+        "summary",
+        "schema",
+        "source",
+        "address",
+        "works"
+      ],
+      "properties": {
+        "summary": {
+          "const": "colour_temperature"
+        },
+        "schema": {
+          "const": "govee-evidence/1"
+        },
+        "source": {
+          "$ref": "#/$defs/source"
+        },
+        "at": {
+          "type": "string"
+        },
+        "address": {
+          "type": "string"
+        },
+        "model": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "submode": {
+          "type": "string"
+        },
+        "works": {
+          "type": "boolean",
+          "description": "the operator saw both the warm and the cool step"
+        },
+        "answers": {
+          "type": "object"
+        },
+        "reported": {
+          "type": "object",
+          "description": "kelvin the light reported after each step"
+        },
+        "limits": {
+          "type": "object",
+          "description": "kelvin reported after writing 2000 and 9000: the range the firmware clamps to"
+        },
+        "result": {
+          "type": "string"
+        },
+        "restored": {
+          "type": "boolean"
+        }
       }
     }
   }
