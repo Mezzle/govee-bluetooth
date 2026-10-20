@@ -214,6 +214,8 @@ RIG="$TOOLS_DIR/govee_rig.py"
 REPORT="$TOOLS_DIR/govee_report.py"
 PYTHON="${PYTHON:-$HOME/rig/bin/python}"
 BENCH_DIR="${BENCH_DIR:-$REPO_DIR/bench}"
+# shellcheck source=tools/phone_capture.sh
+source "$TOOLS_DIR/phone_capture.sh"
 
 # The Blinkt status strip (tools/blinkt.py) lights up whenever this user may drive GPIO.
 RIG_FLAGS=()
@@ -449,16 +451,12 @@ stage "Pair in the Govee app (optional)"
 say "Pairing may update the firmware and closes the AA B1 pairing window on"
 say "secret-key families. Afterwards the census runs again to see what changed."
 if confirm "Pair this light with the app now?"; then
-  say "Optional: to keep the app's own frames, capture on the PHONE, not the Pi"
-  say "(the app talks to the light directly; the Pi's radio never sees it)."
-  say "  Android: Developer options > Enable Bluetooth HCI snoop log, pair, then"
-  say "           take a bug report; the log is FS/data/misc/bluetooth/logs/btsnoop_hci.log."
-  say "  iPhone:  install Apple's Bluetooth logging profile, record with PacketLogger on a Mac."
-  say "Open it in Wireshark (filter: btatt). Keep it private: it holds the pairing exchange."
+  phone_capture_guidance
   step "Open the Govee app, add the device, finish pairing. Let it update"
   step "firmware if it insists, and note the new version."
   step "Set the colour to pure RED from the colour wheel, then close the app fully."
   pause "Paired, red, app closed?"
+  phone_capture_analyse
   connected after-pair census
   A="$BENCH_DIR/$LABEL-after-pair.jsonl"
   fact FIRMWARE_AFTER_PAIR "firmware after pairing" "$(q "$A" light firmware)"

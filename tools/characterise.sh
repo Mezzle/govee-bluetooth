@@ -204,7 +204,7 @@ finish() {
 #
 # Human steps are physical (power on, pair in the app, pick a colour). Every
 # Bluetooth step is run for you through tools/govee_rig.py. Findings go to
-# bench/<label>.env, frame logs to bench/<label>-*.jsonl, HCI captures to
+# bench/<label>.env and frame logs to bench/<label>-*.jsonl.
 # Re-running keeps values already recorded.
 
 TOOLS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -212,6 +212,8 @@ REPO_DIR="$(dirname "$TOOLS_DIR")"
 RIG="$TOOLS_DIR/govee_rig.py"
 PYTHON="${PYTHON:-$HOME/rig/bin/python}"
 BENCH_DIR="${BENCH_DIR:-$REPO_DIR/bench}"
+# shellcheck source=tools/phone_capture.sh
+source "$TOOLS_DIR/phone_capture.sh"
 
 # rig STAGE ARGS... runs the rig with a per-stage frame log and shows output.
 rig() {
@@ -301,16 +303,12 @@ record WRITES_BEFORE_PAIR "Accepted writes before pairing? (yes / no / partial, 
 # ── 6 ─────────────────────────────────────────────────────────────────────
 stage "Pair in the Govee app"
 say "If the light needs a secret, the app sends it as 33 B2 right after connecting."
-say "Optional: to keep the app's own frames, capture on the PHONE, not the Pi"
-say "(the app talks to the light directly; the Pi's radio never sees it)."
-say "  Android: Developer options > Enable Bluetooth HCI snoop log, pair, then"
-say "           take a bug report; the log is FS/data/misc/bluetooth/logs/btsnoop_hci.log."
-say "  iPhone:  install Apple's Bluetooth logging profile, record with PacketLogger on a Mac."
-say "Open it in Wireshark (filter: btatt). Keep it private: it holds the pairing exchange."
+phone_capture_guidance
 step "Open the Govee app, add the device, and finish pairing. Let it update"
 step "firmware if it insists, and note the new version if it does."
 step "Then set the colour to pure RED from the colour wheel."
 pause "Paired, red, and the app shows it connected?"
+phone_capture_analyse
 record FIRMWARE_AFTER_PAIR "Firmware after pairing (same, or the new version):"
 
 # ── 7 ─────────────────────────────────────────────────────────────────────
