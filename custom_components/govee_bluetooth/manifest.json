@@ -685,6 +685,18 @@
     },
     {
       "local_name": "GVH617A*"
+    },
+    {
+      "local_name": "ihoment_H6006*"
+    },
+    {
+      "local_name": "Govee_H6006*"
+    },
+    {
+      "local_name": "GBK_H6006*"
+    },
+    {
+      "local_name": "GVH6006*"
     }
   ],
   "codeowners": [

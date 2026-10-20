@@ -2,75 +2,478 @@
   "schema": "govee-models/1",
   "description": "Shared model classification for Govee BLE lights. The Home Assistant integration (models.py), the Dance Party Flipper app (govee_protocol.c) and the ESP32 image (govee_frames.h) must agree with this file; tools/export_fixtures.py generates the C tables from it and tests/test_fixtures.py checks models.py against it. 'dialect' is the colour sub-mode the current firmware is expected to take; 'pact_decides' means the advertised pact picks 0x0B (pact 1) or 0x15 (pact 2 / 10). 'secret_family' is the decompiled app's secret_key_pairing tag. 'evidence' says how each row is known: hardware (this project's bench), community (a cited capture), app (decompiled-app tables), sibling (placed next to a related SKU, no capture).",
   "dialects": {
-    "legacy": {"submode": "0x02", "brightness_scale": 255},
-    "rgbww": {"submode": "0x0D", "brightness_scale": 100},
-    "rgbic": {"submode": "0x15", "brightness_scale": 100},
-    "dreamcolor": {"submode": "0x0B", "brightness_scale": 100}
+    "legacy": {
+      "submode": "0x02",
+      "brightness_scale": 255
+    },
+    "rgbww": {
+      "submode": "0x0D",
+      "brightness_scale": 100
+    },
+    "rgbic": {
+      "submode": "0x15",
+      "brightness_scale": 100
+    },
+    "dreamcolor": {
+      "submode": "0x0B",
+      "brightness_scale": 100
+    }
   },
   "models": {
-    "H6159": {"dialect": "legacy", "family": "h6159", "evidence": "hardware", "note": "fw 1.07.02 on the bench; writes from anyone"},
-    "H6110": {"dialect": "legacy", "family": "h6159", "evidence": "app"},
-    "H6109": {"dialect": "legacy", "family": "h6159", "evidence": "app"},
-    "H614A": {"dialect": "legacy", "family": "h6159", "evidence": "app"},
-    "H614B": {"dialect": "legacy", "family": "h6159", "evidence": "app"},
-    "H614E": {"dialect": "legacy", "family": "h6159", "evidence": "app"},
-    "H6127": {"dialect": "legacy", "family": "h6127", "evidence": "community"},
-    "H6107": {"dialect": "legacy", "family": "h6127", "evidence": "app"},
-    "H6116": {"dialect": "legacy", "family": "h6127", "evidence": "app"},
-    "H6161": {"dialect": "legacy", "family": "h6127", "evidence": "app"},
-    "H6129": {"dialect": "legacy", "family": "h6129", "evidence": "app"},
-    "H6139": {"dialect": "legacy", "family": "h613839", "evidence": "app"},
-    "H6141": {"dialect": "legacy", "family": "stringlightv2", "evidence": "app", "secret_family": true, "note": "app family is 0x0D primary / 0x02 alt and secret-tagged; HA tables it legacy"},
-    "H6142": {"dialect": "legacy", "family": "stringlightv2", "evidence": "app", "secret_family": true},
-    "H6104": {"dialect": "legacy", "family": "h6104", "evidence": "app", "note": "uses the ffe0/ffe1 UART service, not 1910"},
-    "H6117": {"dialect": "legacy", "family": "h6160", "evidence": "app"},
-    "H6125": {"dialect": "legacy", "family": "h612526", "evidence": "app", "note": "app family is 0x0B primary; HA tables it legacy. Dance Party tables it dreamcolor (pact decides)", "dance_party_dialect": "dreamcolor", "pact_decides": true},
-    "H6126": {"dialect": "legacy", "family": "h612526", "evidence": "app", "dance_party_dialect": "dreamcolor", "pact_decides": true},
-    "H6135": {"dialect": "legacy", "family": null, "evidence": "sibling"},
-    "H6137": {"dialect": "legacy", "family": null, "evidence": "sibling"},
-    "H6138": {"dialect": "legacy", "family": "h613839", "evidence": "app"},
-    "H6160": {"dialect": "legacy", "family": "h6160", "evidence": "app"},
-    "H6163": {"dialect": "legacy", "family": "h6160", "evidence": "app"},
-    "H6170": {"dialect": "legacy", "family": "stringlightv2", "evidence": "app", "secret_family": true},
-    "H6171": {"dialect": "legacy", "family": "barelightv1", "evidence": "app", "dance_party_dialect": "dreamcolor", "pact_decides": true},
-    "H6172": {"dialect": "legacy", "family": null, "evidence": "sibling"},
-    "H6182": {"dialect": "legacy", "family": "h6182", "evidence": "app"},
-    "H6188": {"dialect": "legacy", "family": "h6188", "evidence": "app", "note": "app family is 0x0D with a 20-254 brightness register"},
-    "H6195": {"dialect": "legacy", "family": "stringlightv2", "evidence": "app", "secret_family": true},
-    "H7020": {"dialect": "legacy", "family": null, "evidence": "community"},
-    "H7021": {"dialect": "legacy", "family": null, "evidence": "community"},
-    "H6181": {"dialect": "rgbww", "family": "h6181", "evidence": "hardware", "note": "fw 2.03.11: 0x0D and 0-100, against the app's 0x02"},
-    "H6143": {"dialect": "rgbic", "family": "dreamcolorlightv2", "evidence": "app", "pact_decides": true},
-    "H6144": {"dialect": "rgbic", "family": "dreamcolorlightv2", "evidence": "app", "pact_decides": true},
-    "H619A": {"dialect": "rgbic", "family": "dreamcolorlightv1", "evidence": "app", "pact_decides": true, "secret_family": true},
-    "H619B": {"dialect": "rgbic", "family": null, "evidence": "sibling"},
-    "H619C": {"dialect": "rgbic", "family": null, "evidence": "sibling"},
-    "H619E": {"dialect": "rgbic", "family": null, "evidence": "sibling"},
-    "H619Z": {"dialect": "rgbic", "family": null, "evidence": "sibling"},
-    "H61A0": {"dialect": "rgbic", "family": "dreamcolorlightv1", "evidence": "app", "pact_decides": true, "secret_family": true},
-    "H61A1": {"dialect": "rgbic", "family": null, "evidence": "sibling"},
-    "H61A2": {"dialect": "rgbic", "family": null, "evidence": "sibling"},
-    "H618A": {"dialect": "rgbic", "family": null, "evidence": "sibling", "note": "hardware on hand; verification pending"},
-    "H61B5": {"dialect": "rgbic", "family": "h61d3", "evidence": "sibling", "secret_family": true},
-    "H61E1": {"dialect": "rgbic", "family": "dreamcolorlightv1", "evidence": "app", "pact_decides": true, "secret_family": true},
-    "H61E5": {"dialect": "rgbic", "family": "h61d3", "evidence": "sibling", "secret_family": true},
-    "H6168": {"dialect": "rgbic", "family": "dreamcolorlightv1", "evidence": "sibling", "pact_decides": true, "secret_family": true, "note": "hardware on hand; verification pending"},
-    "H6199": {"dialect": "rgbic", "family": "pact_tvlightv2", "evidence": "community", "pact_decides": true, "note": "HGL: pact 2/1 speaks 0x15, pact 1/1 0x0B"},
-    "H6052": {"dialect": "rgbic", "family": "tablelampv1", "evidence": "app", "note": "app family is 0x0D"},
-    "H6056": {"dialect": "rgbic", "family": "pact_tvlightv3", "evidence": "app", "note": "app family is 0x0D with 0x15 alt"},
-    "H6059": {"dialect": "rgbic", "family": "hollowlamp", "evidence": "app", "secret_family": true, "note": "app family is 0x0D"},
-    "H6061": {"dialect": "rgbic", "family": "h6061", "evidence": "app", "note": "writes 0x15, reads back 0x0D"},
-    "H6062": {"dialect": "rgbic", "family": "striplight", "evidence": "app", "note": "needs AA 41 for the section count"},
-    "H6065": {"dialect": "rgbic", "family": null, "evidence": "sibling"},
-    "H6072": {"dialect": "rgbic", "family": null, "evidence": "community"},
-    "H6076": {"dialect": "rgbic", "family": null, "evidence": "community"},
-    "H617A": {"dialect": "rgbic", "family": "dreamcolorlightv1", "evidence": "community", "pact_decides": true, "secret_family": true, "note": "GENZERO / HGL captures on pact 10/1"},
-    "H6198": {"dialect": "rgbic", "family": "pact_tvlightv2", "evidence": "app", "pact_decides": true, "dance_party_only": true},
-    "H60A0": {"dialect": "rgbic", "family": "h60ax", "evidence": "app", "secret_family": true, "dance_party_only": true},
-    "H60A1": {"dialect": "rgbic", "family": "h60ax", "evidence": "community", "secret_family": true, "dance_party_only": true},
-    "H60A4": {"dialect": "rgbic", "family": "h60ax", "evidence": "app", "secret_family": true, "dance_party_only": true},
-    "H60A6": {"dialect": "rgbic", "family": "h60ax", "evidence": "community", "secret_family": true, "dance_party_only": true, "note": "govee-ble-local live reference; plaintext despite the secret tag"}
+    "H6159": {
+      "dialect": "legacy",
+      "family": "h6159",
+      "evidence": "hardware",
+      "note": "fw 1.07.02 on the bench; writes from anyone"
+    },
+    "H6110": {
+      "dialect": "legacy",
+      "family": "h6159",
+      "evidence": "app"
+    },
+    "H6109": {
+      "dialect": "legacy",
+      "family": "h6159",
+      "evidence": "app"
+    },
+    "H614A": {
+      "dialect": "legacy",
+      "family": "h6159",
+      "evidence": "app"
+    },
+    "H614B": {
+      "dialect": "legacy",
+      "family": "h6159",
+      "evidence": "app"
+    },
+    "H614E": {
+      "dialect": "legacy",
+      "family": "h6159",
+      "evidence": "app"
+    },
+    "H6127": {
+      "dialect": "legacy",
+      "family": "h6127",
+      "evidence": "community"
+    },
+    "H6107": {
+      "dialect": "legacy",
+      "family": "h6127",
+      "evidence": "app"
+    },
+    "H6116": {
+      "dialect": "legacy",
+      "family": "h6127",
+      "evidence": "app"
+    },
+    "H6161": {
+      "dialect": "legacy",
+      "family": "h6127",
+      "evidence": "app"
+    },
+    "H6129": {
+      "dialect": "legacy",
+      "family": "h6129",
+      "evidence": "app"
+    },
+    "H6139": {
+      "dialect": "legacy",
+      "family": "h613839",
+      "evidence": "app"
+    },
+    "H6141": {
+      "dialect": "legacy",
+      "family": "stringlightv2",
+      "evidence": "app",
+      "secret_family": true,
+      "note": "app family is 0x0D primary / 0x02 alt and secret-tagged; HA tables it legacy"
+    },
+    "H6142": {
+      "dialect": "legacy",
+      "family": "stringlightv2",
+      "evidence": "app",
+      "secret_family": true
+    },
+    "H6104": {
+      "dialect": "legacy",
+      "family": "h6104",
+      "evidence": "app",
+      "note": "uses the ffe0/ffe1 UART service, not 1910"
+    },
+    "H6117": {
+      "dialect": "legacy",
+      "family": "h6160",
+      "evidence": "app"
+    },
+    "H6125": {
+      "dialect": "legacy",
+      "family": "h612526",
+      "evidence": "app",
+      "note": "app family is 0x0B primary; HA tables it legacy. Dance Party tables it dreamcolor (pact decides)",
+      "dance_party_dialect": "dreamcolor",
+      "pact_decides": true
+    },
+    "H6126": {
+      "dialect": "legacy",
+      "family": "h612526",
+      "evidence": "app",
+      "dance_party_dialect": "dreamcolor",
+      "pact_decides": true
+    },
+    "H6135": {
+      "dialect": "legacy",
+      "family": null,
+      "evidence": "sibling"
+    },
+    "H6137": {
+      "dialect": "legacy",
+      "family": null,
+      "evidence": "sibling"
+    },
+    "H6138": {
+      "dialect": "legacy",
+      "family": "h613839",
+      "evidence": "app"
+    },
+    "H6160": {
+      "dialect": "legacy",
+      "family": "h6160",
+      "evidence": "app"
+    },
+    "H6163": {
+      "dialect": "legacy",
+      "family": "h6160",
+      "evidence": "app"
+    },
+    "H6170": {
+      "dialect": "legacy",
+      "family": "stringlightv2",
+      "evidence": "app",
+      "secret_family": true
+    },
+    "H6171": {
+      "dialect": "legacy",
+      "family": "barelightv1",
+      "evidence": "app",
+      "dance_party_dialect": "dreamcolor",
+      "pact_decides": true
+    },
+    "H6172": {
+      "dialect": "legacy",
+      "family": null,
+      "evidence": "sibling"
+    },
+    "H6182": {
+      "dialect": "legacy",
+      "family": "h6182",
+      "evidence": "app"
+    },
+    "H6188": {
+      "dialect": "legacy",
+      "family": "h6188",
+      "evidence": "app",
+      "note": "app family is 0x0D with a 20-254 brightness register"
+    },
+    "H6195": {
+      "dialect": "legacy",
+      "family": "stringlightv2",
+      "evidence": "app",
+      "secret_family": true
+    },
+    "H7020": {
+      "dialect": "legacy",
+      "family": null,
+      "evidence": "community"
+    },
+    "H7021": {
+      "dialect": "legacy",
+      "family": null,
+      "evidence": "community"
+    },
+    "H6181": {
+      "dialect": "rgbww",
+      "family": "h6181",
+      "evidence": "hardware",
+      "note": "fw 2.03.11: 0x0D and 0-100, against the app's 0x02"
+    },
+    "H6143": {
+      "dialect": "rgbic",
+      "family": "dreamcolorlightv2",
+      "evidence": "app",
+      "pact_decides": true
+    },
+    "H6144": {
+      "dialect": "rgbic",
+      "family": "dreamcolorlightv2",
+      "evidence": "app",
+      "pact_decides": true
+    },
+    "H619A": {
+      "dialect": "rgbic",
+      "family": "dreamcolorlightv1",
+      "evidence": "app",
+      "pact_decides": true,
+      "secret_family": true
+    },
+    "H619B": {
+      "dialect": "rgbic",
+      "family": null,
+      "evidence": "sibling"
+    },
+    "H619C": {
+      "dialect": "rgbic",
+      "family": null,
+      "evidence": "sibling"
+    },
+    "H619E": {
+      "dialect": "rgbic",
+      "family": null,
+      "evidence": "sibling"
+    },
+    "H619Z": {
+      "dialect": "rgbic",
+      "family": null,
+      "evidence": "sibling"
+    },
+    "H61A0": {
+      "dialect": "rgbic",
+      "family": "dreamcolorlightv1",
+      "evidence": "app",
+      "pact_decides": true,
+      "secret_family": true
+    },
+    "H61A1": {
+      "dialect": "rgbic",
+      "family": null,
+      "evidence": "sibling"
+    },
+    "H61A2": {
+      "dialect": "rgbic",
+      "family": null,
+      "evidence": "sibling"
+    },
+    "H618A": {
+      "dialect": "rgbic",
+      "family": null,
+      "evidence": "sibling",
+      "note": "hardware on hand; verification pending"
+    },
+    "H61B5": {
+      "dialect": "rgbic",
+      "family": "h61d3",
+      "evidence": "sibling",
+      "secret_family": true
+    },
+    "H61E1": {
+      "dialect": "rgbic",
+      "family": "dreamcolorlightv1",
+      "evidence": "app",
+      "pact_decides": true,
+      "secret_family": true
+    },
+    "H61E5": {
+      "dialect": "rgbic",
+      "family": "h61d3",
+      "evidence": "sibling",
+      "secret_family": true
+    },
+    "H6168": {
+      "dialect": "rgbic",
+      "family": "dreamcolorlightv1",
+      "evidence": "sibling",
+      "pact_decides": true,
+      "secret_family": true,
+      "note": "hardware on hand; verification pending"
+    },
+    "H6199": {
+      "dialect": "rgbic",
+      "family": "pact_tvlightv2",
+      "evidence": "community",
+      "pact_decides": true,
+      "note": "HGL: pact 2/1 speaks 0x15, pact 1/1 0x0B"
+    },
+    "H6052": {
+      "dialect": "rgbic",
+      "family": "tablelampv1",
+      "evidence": "app",
+      "note": "app family is 0x0D"
+    },
+    "H6056": {
+      "dialect": "rgbic",
+      "family": "pact_tvlightv3",
+      "evidence": "app",
+      "note": "app family is 0x0D with 0x15 alt"
+    },
+    "H6059": {
+      "dialect": "rgbic",
+      "family": "hollowlamp",
+      "evidence": "app",
+      "secret_family": true,
+      "note": "app family is 0x0D"
+    },
+    "H6061": {
+      "dialect": "rgbic",
+      "family": "h6061",
+      "evidence": "app",
+      "note": "writes 0x15, reads back 0x0D"
+    },
+    "H6062": {
+      "dialect": "rgbic",
+      "family": "striplight",
+      "evidence": "app",
+      "note": "needs AA 41 for the section count"
+    },
+    "H6065": {
+      "dialect": "rgbic",
+      "family": null,
+      "evidence": "sibling"
+    },
+    "H6072": {
+      "dialect": "rgbic",
+      "family": null,
+      "evidence": "community"
+    },
+    "H6076": {
+      "dialect": "rgbic",
+      "family": null,
+      "evidence": "community"
+    },
+    "H617A": {
+      "dialect": "rgbic",
+      "family": "dreamcolorlightv1",
+      "evidence": "community",
+      "pact_decides": true,
+      "secret_family": true,
+      "note": "GENZERO / HGL captures on pact 10/1"
+    },
+    "H6198": {
+      "dialect": "rgbic",
+      "family": "pact_tvlightv2",
+      "evidence": "app",
+      "pact_decides": true,
+      "dance_party_only": true
+    },
+    "H60A0": {
+      "dialect": "rgbic",
+      "family": "h60ax",
+      "evidence": "app",
+      "secret_family": true,
+      "dance_party_only": true
+    },
+    "H60A1": {
+      "dialect": "rgbic",
+      "family": "h60ax",
+      "evidence": "community",
+      "secret_family": true,
+      "dance_party_only": true
+    },
+    "H60A4": {
+      "dialect": "rgbic",
+      "family": "h60ax",
+      "evidence": "app",
+      "secret_family": true,
+      "dance_party_only": true
+    },
+    "H60A6": {
+      "dialect": "rgbic",
+      "family": "h60ax",
+      "evidence": "community",
+      "secret_family": true,
+      "dance_party_only": true,
+      "note": "govee-ble-local live reference; plaintext despite the secret tag"
+    },
+    "H6006": {
+      "dialect": "rgbww",
+      "family": "bulblightv3",
+      "evidence": "hardware",
+      "note": "fw 1.00.38 / hw 1.02.01, pact 1/1 (bench 2026-10-20): 0x0D only, others rejected (33 05 01); brightness 0-100, bytes over 100 render dimmer; kelvin clamps to 6500; legacy scenes do not run; 2b11 write-without-response only"
+    }
   },
-  "dreamcolor_pact_models": ["H611A", "H611B", "H611Z", "H6123", "H6125", "H6126", "H612A", "H612B", "H612C", "H612D", "H612E", "H612F", "H6143", "H6144", "H6145", "H6146", "H6147", "H6168", "H6171", "H617A", "H6184", "H6198", "H6199", "H619A", "H61A0", "H61A8", "H61A9", "H61E0", "H61E1", "H70A1", "H70A2", "H70A3"],
-  "secret_family_models": ["H611B", "H611Z", "H6123", "H612A", "H612B", "H612C", "H612D", "H612E", "H612F", "H6168", "H617A", "H619A", "H61A0", "H61A8", "H61A9", "H61E0", "H61E1", "H70A1", "H70A2", "H70A3", "H61B5", "H61E5", "H61D3", "H6640", "H6641", "H6141", "H6142", "H6154", "H6170", "H6178", "H6192", "H6195", "H6196", "H6197", "H6050", "H6051", "H6055", "H6058", "H6059", "H6073", "H60A0", "H60A1", "H60A4", "H60A6", "H60C1", "H6047", "H6043", "H6042", "H6039", "H6038", "H6048"]
+  "dreamcolor_pact_models": [
+    "H611A",
+    "H611B",
+    "H611Z",
+    "H6123",
+    "H6125",
+    "H6126",
+    "H612A",
+    "H612B",
+    "H612C",
+    "H612D",
+    "H612E",
+    "H612F",
+    "H6143",
+    "H6144",
+    "H6145",
+    "H6146",
+    "H6147",
+    "H6168",
+    "H6171",
+    "H617A",
+    "H6184",
+    "H6198",
+    "H6199",
+    "H619A",
+    "H61A0",
+    "H61A8",
+    "H61A9",
+    "H61E0",
+    "H61E1",
+    "H70A1",
+    "H70A2",
+    "H70A3"
+  ],
+  "secret_family_models": [
+    "H611B",
+    "H611Z",
+    "H6123",
+    "H612A",
+    "H612B",
+    "H612C",
+    "H612D",
+    "H612E",
+    "H612F",
+    "H6168",
+    "H617A",
+    "H619A",
+    "H61A0",
+    "H61A8",
+    "H61A9",
+    "H61E0",
+    "H61E1",
+    "H70A1",
+    "H70A2",
+    "H70A3",
+    "H61B5",
+    "H61E5",
+    "H61D3",
+    "H6640",
+    "H6641",
+    "H6141",
+    "H6142",
+    "H6154",
+    "H6170",
+    "H6178",
+    "H6192",
+    "H6195",
+    "H6196",
+    "H6197",
+    "H6050",
+    "H6051",
+    "H6055",
+    "H6058",
+    "H6059",
+    "H6073",
+    "H60A0",
+    "H60A1",
+    "H60A4",
+    "H60A6",
+    "H60C1",
+    "H6047",
+    "H6043",
+    "H6042",
+    "H6039",
+    "H6038",
+    "H6048"
+  ]
 }

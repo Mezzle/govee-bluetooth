@@ -127,3 +127,12 @@ def test_brightness_scale_for_submode() -> None:
     assert models.brightness_scale_for_submode(0x0D, 255) == 100
     assert models.brightness_scale_for_submode(0x15, 255) == 100
     assert models.brightness_scale_for_submode(0x04, 255) == 255
+
+
+def test_h6006_bulb_profile_from_the_bench() -> None:
+    profile = KNOWN_MODELS["H6006"]
+    assert profile.color_submode == protocol.SUBMODE_COLOR_RGBWW
+    # Bytes over 100 render dimmer on this bulb: the scale must be 0-100.
+    assert profile.brightness_scale == 100
+    assert protocol.brightness_frame(255, profile.brightness_scale)[2] == 100
+    assert not profile.supports_scenes

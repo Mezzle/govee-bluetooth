@@ -175,10 +175,26 @@ _RGBWW_TV = ModelProfile(
     scenes=LEGACY_SCENES,
 )
 
+# Verified on hardware 2026-10-19/20 (Pi bench rig): an H6006 bulb on
+# firmware 1.00.38, hardware 1.02.01, pact 1/1, plaintext. Colour only in
+# 0x0D (0x02 / 0x0B / 0x15 are rejected with a 33 05 01 ack); white in 0x0D
+# with kelvin echoed (6700 K comes back as 6500 K); brightness 0-100, where
+# a byte above 100 is acked but renders dimmer, so it must never be sent;
+# none of the legacy scene IDs visibly ran. Its 2b11 is write-without-
+# response only, which device.py now handles per connection.
+_RGBWW_BULB = ModelProfile(
+    model="H6006",
+    description="Govee RGBWW bulb (0x0D colour scheme)",
+    color_submode=0x0D,
+    brightness_scale=100,
+    scenes={},
+)
+
 KNOWN_MODELS: dict[str, ModelProfile] = {
     **_family(_LEGACY_RGB, LEGACY_RGB_MODELS),
     **_family(_RGBIC, RGBIC_MODELS),
     "H6181": _RGBWW_TV,
+    "H6006": _RGBWW_BULB,
 }
 
 DEFAULT_MODEL = "H6159"
