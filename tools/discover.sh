@@ -214,7 +214,6 @@ RIG="$TOOLS_DIR/govee_rig.py"
 REPORT="$TOOLS_DIR/govee_report.py"
 PYTHON="${PYTHON:-$HOME/rig/bin/python}"
 BENCH_DIR="${BENCH_DIR:-$REPO_DIR/bench}"
-BTMON_PID=""
 
 # The Blinkt status strip (tools/blinkt.py) lights up whenever this user may drive GPIO.
 RIG_FLAGS=()
@@ -231,38 +230,6 @@ rig() {
 connected() {
   local tag="$1" sub="$2"; shift 2
   rig "$tag" "$sub" "$ADDRESS" --no-scan --model "$MODEL" "$@"
-}
-
-btmon_start() {
-  local file="$BENCH_DIR/$LABEL-$1.btsnoop"
-  if ! command -v btmon >/dev/null 2>&1; then
-    warn "btmon not installed (apt install bluez); skipping HCI capture"
-    SKIPPED+=("HCI capture $file")
-    return
-  fi
-  # A sudo rule for btmon alone is enough (the bench Pi's homelab-operator
-  # has exactly that); without one, sudo asks for a password here.
-  sudo -n -l "$(command -v btmon)" >/dev/null 2>&1 || say "btmon needs sudo; you may be asked for your password."
-  sudo btmon -w "$file" >/dev/null 2>&1 &
-  BTMON_PID=$!
-  sleep 1
-  if ! kill -0 "$BTMON_PID" 2>/dev/null; then
-    warn "btmon did not start (no sudo for it?); skipping HCI capture"
-    SKIPPED+=("HCI capture $file")
-    BTMON_PID=""
-    return
-  fi
-  printf '  %s● recording%s HCI to %s\n' "$GREEN" "$RESET" "$file"
-}
-
-btmon_stop() {
-  [[ -n "$BTMON_PID" ]] || return 0
-  # Signal the sudo process, not btmon: sudo relays SIGINT to its child, and
-  # an unprivileged user may signal its own sudo but not root's btmon.
-  kill -INT "$BTMON_PID" 2>/dev/null || true
-  wait "$BTMON_PID" 2>/dev/null || true
-  BTMON_PID=""
-  printf '  %s■ capture stopped%s\n' "$GREEN" "$RESET"
 }
 
 # record KEY "Prompt" asks the human to type what they saw, and keeps it.
@@ -309,7 +276,6 @@ fi
 LABEL="${LABEL//[^A-Za-z0-9_-]/_}"
 mkdir -p "$BENCH_DIR"
 ENV_FILE="$BENCH_DIR/$LABEL.env"
-trap btmon_stop EXIT
 
 banner "Discover what a Govee light speaks: $LABEL"
 
@@ -328,7 +294,6 @@ if command -v bluetoothctl >/dev/null 2>&1; then
   bluetoothctl power on >/dev/null 2>&1 || true
   say "adapter: $(bluetoothctl show 2>/dev/null | grep -E 'Powered|Name' | tr -s ' ' | paste -sd ' ')"
 fi
-command -v btmon >/dev/null 2>&1 || warn "btmon not found: the pairing capture in stage 8 will be skipped"
 say "Records go to $ENV_FILE; evidence to $BENCH_DIR/$LABEL-*.jsonl"
 warn "Close the Govee app on every phone nearby. The light takes one connection at a time."
 pause
@@ -480,17 +445,20 @@ else
 fi
 
 # ── 8 ─────────────────────────────────────────────────────────────────────
-stage "Pair in the Govee app, with a capture (optional)"
-say "Pairing may update the firmware, closes the AA B1 pairing window on"
-say "secret-key families, and shows the app's own first frames. An HCI capture"
-say "runs while you pair so those frames are kept."
+stage "Pair in the Govee app (optional)"
+say "Pairing may update the firmware and closes the AA B1 pairing window on"
+say "secret-key families. Afterwards the census runs again to see what changed."
 if confirm "Pair this light with the app now?"; then
-  btmon_start pair
+  say "Optional: to keep the app's own frames, capture on the PHONE, not the Pi"
+  say "(the app talks to the light directly; the Pi's radio never sees it)."
+  say "  Android: Developer options > Enable Bluetooth HCI snoop log, pair, then"
+  say "           take a bug report; the log is FS/data/misc/bluetooth/logs/btsnoop_hci.log."
+  say "  iPhone:  install Apple's Bluetooth logging profile, record with PacketLogger on a Mac."
+  say "Open it in Wireshark (filter: btatt). Keep it private: it holds the pairing exchange."
   step "Open the Govee app, add the device, finish pairing. Let it update"
   step "firmware if it insists, and note the new version."
   step "Set the colour to pure RED from the colour wheel, then close the app fully."
   pause "Paired, red, app closed?"
-  btmon_stop
   connected after-pair census
   A="$BENCH_DIR/$LABEL-after-pair.jsonl"
   fact FIRMWARE_AFTER_PAIR "firmware after pairing" "$(q "$A" light firmware)"
@@ -501,9 +469,9 @@ if confirm "Pair this light with the app now?"; then
     "$(q "$BENCH_DIR/$LABEL-after-pair-write.jsonl" verify rgb)"
   if [[ "${WRITES_AFTER_PAIR,,}" == n* ]]; then
     say "A light that stopped obeying may need its 8-byte secret (33 B2) first."
-    say "Find it in $BENCH_DIR/$LABEL-pair.btsnoop (Wireshark filter: btatt.value[0:2] == 33:b2)"
-    say "or in the stage-4 log if AA B1 answered before pairing (it is redacted there;"
-    say "re-run 'census --keep-secrets' only into a private file)."
+    say "It is in the stage-4 log if AA B1 answered before pairing (redacted there;"
+    say "re-run 'census --keep-secrets' only into a private file), or in a phone-side"
+    say "capture of the pairing (Wireshark filter: btatt.value[0:2] == 33:b2)."
     ask_secret SECRET_HEX "8 secret bytes as 16 hex chars (Enter to skip):" || true
     if [[ -n "${SECRET_HEX:-}" ]]; then
       write_env SECRET_HEX "$SECRET_HEX"
@@ -546,7 +514,7 @@ step "Add or update the model row in fixtures/govee-models.json, e.g."
 note "  \"$MODEL\": {\"dialect\": \"<legacy|rgbww|rgbic|dreamcolor>\", \"family\": null, \"evidence\": \"hardware\", \"note\": \"fw ${FIRMWARE:-?}, pact ${PACT:-?}, echoed ${ECHOED:-?}\"}"
 step "Then models.py (tests/test_fixtures.py checks they agree) and regenerate Dance Party's headers:"
 note "  python3 tools/export_fixtures.py --out-dir ../govee-dance-party/generated"
-step "Attach $LABEL-report.md and the JSONL logs to the pull request; never the .env or .btsnoop if a secret was recorded."
+step "Attach $LABEL-report.md and the JSONL logs to the pull request; never the .env or a phone capture if a secret was recorded."
 finish
 say "Record: $ENV_FILE"
 say "Evidence: $BENCH_DIR/$LABEL-*.jsonl, report $BENCH_DIR/$LABEL-report.md"

@@ -205,14 +205,13 @@ finish() {
 # Human steps are physical (power on, pair in the app, pick a colour). Every
 # Bluetooth step is run for you through tools/govee_rig.py. Findings go to
 # bench/<label>.env, frame logs to bench/<label>-*.jsonl, HCI captures to
-# bench/<label>-*.btsnoop. Re-running keeps values already recorded.
+# Re-running keeps values already recorded.
 
 TOOLS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_DIR="$(dirname "$TOOLS_DIR")"
 RIG="$TOOLS_DIR/govee_rig.py"
 PYTHON="${PYTHON:-$HOME/rig/bin/python}"
 BENCH_DIR="${BENCH_DIR:-$REPO_DIR/bench}"
-BTMON_PID=""
 
 # rig STAGE ARGS... runs the rig with a per-stage frame log and shows output.
 rig() {
@@ -225,28 +224,6 @@ rig() {
 connected() {
   local tag="$1" sub="$2"; shift 2
   rig "$tag" "$sub" "$ADDRESS" --no-scan --model "$MODEL" "$@"
-}
-
-btmon_start() {
-  local file="$BENCH_DIR/$LABEL-$1.btsnoop"
-  if ! command -v btmon >/dev/null 2>&1; then
-    warn "btmon not installed (apt install bluez); skipping HCI capture"
-    SKIPPED+=("HCI capture $file")
-    return
-  fi
-  sudo -n true 2>/dev/null || say "btmon needs sudo; you may be asked for your password."
-  sudo btmon -w "$file" >/dev/null 2>&1 &
-  BTMON_PID=$!
-  sleep 1
-  printf '  %s● recording%s HCI to %s\n' "$GREEN" "$RESET" "$file"
-}
-
-btmon_stop() {
-  [[ -n "$BTMON_PID" ]] || return 0
-  sudo kill -INT "$BTMON_PID" 2>/dev/null || true
-  wait "$BTMON_PID" 2>/dev/null || true
-  BTMON_PID=""
-  printf '  %s■ capture stopped%s\n' "$GREEN" "$RESET"
 }
 
 # record KEY "Prompt" asks the human to type what the rig just printed.
@@ -264,7 +241,6 @@ fi
 LABEL="${LABEL//[^A-Za-z0-9_-]/_}"
 mkdir -p "$BENCH_DIR"
 ENV_FILE="$BENCH_DIR/$LABEL.env"
-trap btmon_stop EXIT
 
 banner "Characterise a Govee light: $LABEL"
 
@@ -281,7 +257,6 @@ if command -v bluetoothctl >/dev/null 2>&1; then
   bluetoothctl power on >/dev/null 2>&1 || true
   say "adapter: $(bluetoothctl show 2>/dev/null | grep -E 'Powered|Name' | tr -s ' ' | paste -sd ' ')"
 fi
-command -v btmon >/dev/null 2>&1 || warn "btmon not found: HCI captures will be skipped"
 say "Records go to $ENV_FILE"
 warn "Close the Govee app on every phone nearby. The light takes one connection at a time."
 pause
@@ -324,15 +299,18 @@ step "Look at the '=>' verdict lines."
 record WRITES_BEFORE_PAIR "Accepted writes before pairing? (yes / no / partial, with a note):"
 
 # ── 6 ─────────────────────────────────────────────────────────────────────
-stage "Pair in the Govee app, with a capture running"
-say "An HCI capture will run while you pair, so the app's first frames are"
-say "kept. If the light needs a secret, the app sends it here as 33 B2."
-btmon_start pair
+stage "Pair in the Govee app"
+say "If the light needs a secret, the app sends it as 33 B2 right after connecting."
+say "Optional: to keep the app's own frames, capture on the PHONE, not the Pi"
+say "(the app talks to the light directly; the Pi's radio never sees it)."
+say "  Android: Developer options > Enable Bluetooth HCI snoop log, pair, then"
+say "           take a bug report; the log is FS/data/misc/bluetooth/logs/btsnoop_hci.log."
+say "  iPhone:  install Apple's Bluetooth logging profile, record with PacketLogger on a Mac."
+say "Open it in Wireshark (filter: btatt). Keep it private: it holds the pairing exchange."
 step "Open the Govee app, add the device, and finish pairing. Let it update"
 step "firmware if it insists, and note the new version if it does."
 step "Then set the colour to pure RED from the colour wheel."
 pause "Paired, red, and the app shows it connected?"
-btmon_stop
 record FIRMWARE_AFTER_PAIR "Firmware after pairing (same, or the new version):"
 
 # ── 7 ─────────────────────────────────────────────────────────────────────
@@ -398,8 +376,8 @@ record SCENES_ACCEPTED "Scene IDs that visibly ran (e.g. '0,1,4,5' or 'none'):"
 stage "Secret test (only if writes were ignored)"
 if [[ "${WRITES_BEFORE_PAIR:-}" == no* ]] || confirm "Did any write stage above get NO REPLY or no visible change?"; then
   say "If the light needs its 8-byte secret, sending it first should unlock writes."
-  say "Sources: the aa b1 reply from stage 4, or the 33 B2 frame in"
-  say "$BENCH_DIR/$LABEL-pair.btsnoop (Wireshark filter: btatt.value[0:2] == 33:b2)."
+  say "Sources: the aa b1 reply from stage 4, or the 33 B2 frame in a phone-side"
+  say "capture of the pairing (Wireshark filter: btatt.value[0:2] == 33:b2)."
   ask_secret SECRET_HEX "8 secret bytes as 16 hex chars (or Enter to skip):" || true
   if [[ -n "${SECRET_HEX:-}" ]]; then
     write_env SECRET_HEX "$SECRET_HEX"

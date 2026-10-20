@@ -132,7 +132,8 @@ pushes (`33 xx` echoes) are logged as `ack`, corrupt frames as
 replies, `33 B2` writes) are written with the secret zeroed and
 `"redacted": true`; `--keep-secrets` turns that off for a private capture.
 
-For a full HCI capture, run `btmon` in a second terminal before connecting:
+For a full HCI capture of the rig's own connection, run `btmon` in a second terminal
+before connecting (it sees only what passes through the Pi's radio):
 
 ```sh
 sudo btmon -w govee-$(date +%Y%m%d-%H%M).btsnoop
@@ -170,7 +171,9 @@ app writes as `33 B2 <8 bytes>` right after every connect. See
 
 1. `send ADDR raw aa b1 00`: a light in its pairing window answers `AA B1 01`
    followed by the 8 secret bytes. A factory-reset light should answer.
-2. Run `btmon -w` while the Govee app sets a colour: the `33 B2` write is the
+2. Capture on the phone while the Govee app sets a colour (Android HCI snoop log,
+   or PacketLogger with Apple's Bluetooth profile on an iPhone; a capture on the
+   Pi cannot see the phone's link): the `33 B2` write is the
    first or second frame after connect and is plaintext on these families.
 3. The Govee account device record carries it as `bleExt.secretCode` (base64),
    through the app's private API on `device.govee.com`, not the public key API.
@@ -198,8 +201,8 @@ columns), the read-only census, the opt-in probe with a prompt for what
 the light visibly did on each dialect, brightness scale, colour
 temperature, legacy scene codes, an optional app pairing with an HCI
 capture and a post-pairing re-check, then `govee_report.py` with your
-observations folded in. The pairing capture needs `btmon` as root; a
-sudoers rule for `/usr/bin/btmon` alone is enough. Findings go to `bench/LABEL.env`, evidence to
+observations folded in. To keep the app's own frames from the pairing
+stage, capture on the phone; the wizard says how. Findings go to `bench/LABEL.env`, evidence to
 `bench/LABEL-*.jsonl`, the report to `bench/LABEL-report.md`. The last
 stage prints the `fixtures/govee-models.json` row to add. Re-running keeps
 recorded values. `PYTHON=/path/to/python` overrides `~/rig/bin/python`.
@@ -210,12 +213,12 @@ recorded values. `PYTHON=/path/to/python` overrides `~/rig/bin/python`.
 the box to a filled-in record. It runs every rig command itself and stops
 only for the physical steps: power on, pair in the app, pick a colour. It
 reads the pairing secret with `AA B1` before the app ever binds the light,
-runs `btmon` while you pair as a backup capture of the app's first frames,
+explains how to capture the app's first frames on the phone if you want them,
 reads back what the app set for red, white, a scene and music, runs the
 active probe, tries a colour write in all four dialects with an `AA A5`
 segment read, then brightness scale, colour temperature and scene codes.
 
-Findings go to `bench/LABEL.env`, frame logs to `bench/LABEL-*.jsonl` and
-captures to `bench/LABEL-*.btsnoop`. `bench/` is git-ignored because the
+Findings go to `bench/LABEL.env` and frame logs to `bench/LABEL-*.jsonl`.
+`bench/` is git-ignored because the
 record may hold the secret. Re-running offers each recorded value as the
 default. `PYTHON=/path/to/python` overrides the default `~/rig/bin/python`.
