@@ -520,9 +520,10 @@ stage "Report"
 say "Folding your observations into the evidence and generating the report."
 # The probe's per-dialect answers are already in the log as observations.
 observe=()
-[[ -n "${CT_RESULT:-}" ]] && observe+=(--observe "$ADDRESS=colour temperature in 0x$CT_SUBMODE: $CT_RESULT;capability=rgbww;outcome=$(outcome "$CT_RESULT")")
-[[ -n "${SCENES_ACCEPTED:-}" ]] && observe+=(--observe "$ADDRESS=legacy scene IDs that ran: $SCENES_ACCEPTED;capability=scene;outcome=$([[ "${SCENES_ACCEPTED,,}" == none ]] && echo unchanged || echo worked)")
-[[ -n "${BRIGHTNESS_SCALE:-}" ]] && observe+=(--observe "$ADDRESS=brightness scale $BRIGHTNESS_SCALE;capability=brightness;outcome=worked")
+# The whites test logs its own observations and result.
+# Every legacy ID was tried, so "none" is a failure of the capability, not of one dialect.
+[[ -n "${SCENES_ACCEPTED:-}" ]] && observe+=(--observe "$ADDRESS=legacy scene IDs that ran: $SCENES_ACCEPTED;capability=scene;outcome=$([[ "${SCENES_ACCEPTED,,}" == none ]] && echo failed || echo worked)")
+# The scale test logs its own observations and result.
 shopt -s nullglob
 logs=("$BENCH_DIR/$LABEL"-*.jsonl)
 shopt -u nullglob

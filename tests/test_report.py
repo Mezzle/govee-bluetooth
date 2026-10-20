@@ -171,3 +171,33 @@ def test_no_change_on_one_dialect_is_not_an_rgb_capability(report) -> None:
     )
     (dev,) = doc["devices"]
     assert dev["capabilities"]["rgb"]["level"] == "observed"
+
+
+def test_read_back_and_eyes_disagreeing_is_disputed(report) -> None:
+    caps = report.capabilities(
+        report.census.CensusResult(connected=True),
+        {"commands": [], "acks": 0},
+        [
+            {
+                "capability": "scene",
+                "outcome": "failed",
+                "observed": "legacy scene IDs that ran: none",
+            }
+        ],
+        [{"summary": "verify", "action": "scene", "args": [15], "echoed": True}],
+    )
+    assert caps["scene"]["level"] == "disputed"
+    assert "reported back" in caps["scene"]["basis"] and "none" in caps["scene"]["basis"]
+
+
+def test_scale_test_conclusion_is_the_brightness_basis(report) -> None:
+    caps = report.capabilities(
+        report.census.CensusResult(connected=True),
+        {"commands": [], "acks": 0},
+        [{"capability": "brightness", "outcome": "worked", "observed": "brightness 255: dimmer"}],
+        [{"summary": "brightness_scale", "scale": "100", "reason": "255 looked DIMMER than 100"}],
+    )
+    assert caps["brightness"] == {
+        "level": "observed",
+        "basis": "scale 0-100: 255 looked DIMMER than 100",
+    }
