@@ -57,6 +57,10 @@ class GoveeBleLight(CoordinatorEntity[GoveeCoordinator], LightEntity):
             name=device.name,
             sw_version=device.state.firmware,
         )
+        # The model's measured range; HA's colour-temperature slider and any
+        # service call get clamped to it rather than to the widest family.
+        self._attr_min_color_temp_kelvin = device.profile.min_kelvin
+        self._attr_max_color_temp_kelvin = device.profile.max_kelvin
         if device.profile.supports_scenes:
             self._attr_supported_features = LightEntityFeature.EFFECT
             self._attr_effect_list = list(device.profile.scenes)

@@ -1248,8 +1248,9 @@ From the Pi rig's census and stepped tests (`tools/govee_rig.py census --probe
   `33 05 01` for `0x02`, `0x0B` and `0x15`. The ack is an application-level
   accept / reject, a stronger signal than an echo; the census records it.
 - The `0x0D` reply is the rgb_kelvin_tint kind, RGB zero in white mode.
-- Kelvin: 4300 K echoed; 6700 K came back as 6500 K (app: bulbs 2700-6500 K,
-  `SPEC:1255-1256`).
+- Kelvin: 4300 K echoed; 2000 K and 9000 K come back as 2700 K and 6500 K
+  (app: bulbs 2700-6500 K, `SPEC:1255-1256`); warm and cool confirmed by eye
+  with `govee_rig.py whites`. `ModelProfile.min_kelvin` / `max_kelvin` carry it.
 - Brightness: `33 04 <n>` is acked and stored for any byte, but above 100
   renders *dimmer* than 100 (255 dimmer; 200 hard to tell from 100, which
   fits a modulo-101 wrap). Scale 0-100; never send more.

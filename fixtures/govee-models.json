@@ -386,7 +386,9 @@
       "dialect": "rgbww",
       "family": "bulblightv3",
       "evidence": "hardware",
-      "note": "fw 1.00.38 / hw 1.02.01, pact 1/1 (bench 2026-10-20): 0x0D only, others rejected (33 05 01); brightness 0-100, bytes over 100 render dimmer; kelvin clamps to 6500; legacy scenes do not run; 2b11 write-without-response only"
+      "note": "fw 1.00.38 / hw 1.02.01, pact 1/1 (bench 2026-10-20): 0x0D only, others rejected (33 05 01); brightness 0-100, bytes over 100 render dimmer; kelvin 2700-6500 (read back; warm and cool confirmed by eye); legacy scenes do not run; 2b11 write-without-response only",
+      "min_kelvin": 2700,
+      "max_kelvin": 6500
     }
   },
   "dreamcolor_pact_models": [
