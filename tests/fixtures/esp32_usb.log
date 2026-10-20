@@ -1,0 +1,10 @@
+govee party: ready
+census (bridge)
+found ihoment_H6159_1234 aa:bb:cc:dd:ee:01 rssi -50 RGB pact 1/1 flags 03
+{"summary": "session", "schema": "govee-evidence/1", "source": "esp32", "software": "govee-party-esp32 0.2 bridge 4", "board": "M5STACK_ATOMS3", "lights": 1, "probe": false}
+{"at": "T+12.001", "direction": "tx", "frame": "aa010000000000000000000000000000000000ab", "note": "query", "decoded": "read power", "address": "aa:bb:cc:dd:ee:01"}
+{"at": "T+12.090", "direction": "rx", "frame": "aa010000000000000000000000000000000000ab", "note": "reply", "decoded": "power off", "address": "aa:bb:cc:dd:ee:01"}
+{"at": "T+12.100", "direction": "tx", "frame": "aa050100000000000000000000000000000000ae", "note": "query", "decoded": "read mode", "address": "aa:bb:cc:dd:ee:01"}
+{"at": "T+12.190", "direction": "rx", "frame": "aa050408000000000000000000000000000000a3", "note": "reply", "decoded": "mode scene 08 00 00 00", "address": "aa:bb:cc:dd:ee:01"}
+CENSUS {"summary": "light", "schema": "govee-evidence/1", "source": "esp32", "at": "T+13.000", "software": "govee-party-esp32 0.2 bridge 4", "address": "aa:bb:cc:dd:ee:01", "name": "ihoment_H6159_1234", "model": "H6159", "known_model": true, "rssi": -50, "pact": "1/1", "flags": 3, "encrypted": false, "dialect": "RGB", "dialect_source": "table", "secret_family": false, "connected": true, "subscribed": true, "silent": false, "gatt": "1910/2b11/2b10", "reads": 9, "replies": 5, "power": false, "brightness": 40, "submode": "04 08000000", "submode_name": "scene", "firmware": "1.07.02", "secret_present": false, "segment_page": false, "probed": false}
+census done: 1 light(s)
