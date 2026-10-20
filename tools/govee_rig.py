@@ -1035,7 +1035,7 @@ SCALE_STEPS = (
     # (level, question or None, what each scale predicts)
     (25, None, "dim on either scale (25% or 10%)"),
     (100, "Is it at or near FULL brightness now?", "full on a 0-100 light, about 40% on a 0-255 light"),
-    (255, "Did it get CLEARLY BRIGHTER again than a moment ago?", "brighter on a 0-255 light, no change on 0-100"),
+    (255, "Did it get CLEARLY BRIGHTER again than a moment ago?", "brighter on a 0-255 light; same, or dimmer, on 0-100"),
 )  # fmt: skip
 
 
@@ -1045,6 +1045,14 @@ def scale_from(
     """``(scale, reason)`` from the read-backs and the two answers; scale None when they disagree."""
     eyes_255 = near_full_at_100 == "no" and brighter_at_255 == "yes"
     eyes_100 = near_full_at_100 == "yes" and brighter_at_255 == "no"
+    if brighter_at_255 == "dimmer":
+        # The H6006 (fw 1.00.38): acks and stores 255, renders it dimmer than
+        # 100. Most likely a signed or wrapped byte. A 0-100 light where any
+        # value above 100 must never be sent.
+        return "100", (
+            "255 looked DIMMER than 100: the firmware takes 0-100 and mis-renders larger "
+            "values (stored " + ("yes" if stored_255 else "unknown") + "); never send above 100"
+        )
     if eyes_255:
         return "255", "100 looked partial and 255 brighter" + (
             ", and the light stored 255" if stored_255 else ""
@@ -1093,14 +1101,17 @@ async def cmd_scale(args: argparse.Namespace) -> None:
                     link, "  >>> Look at it for a moment, then press Enter: "
                 )
                 continue
+            choices = (
+                "[y]es / [n]o / [d]immer / [q]uit" if level == 255 else "[y]es / [n]o / [q]uit"
+            )
             while True:
-                raw = await prompt_keeping_alive(link, f"  >>> {question} [y]es / [n]o / [q]uit: ")
+                raw = await prompt_keeping_alive(link, f"  >>> {question} {choices}: ")
                 key = (raw or "q").strip().lower()[:1]
-                if key in ("y", "n", "q"):
+                if key in ("y", "n", "q") or (key == "d" and level == 255):
                     break
             if key == "q":
                 break
-            answers[level] = "yes" if key == "y" else "no"
+            answers[level] = {"y": "yes", "n": "no", "d": "dimmer"}[key]
             log.write_line(
                 {
                     "summary": "observation", "schema": census.SCHEMA, "source": "manual", "at": now_iso(),

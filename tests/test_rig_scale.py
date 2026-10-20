@@ -39,3 +39,10 @@ def test_contradictory_answers_are_undecided(rig) -> None:
 def test_read_back_only_when_nobody_answered(rig) -> None:
     assert rig.scale_from(True, None, None) == ("255", "read-back only: the light stored 255")
     assert rig.scale_from(False, None, None)[0] == "100"
+
+
+def test_dimmer_at_255_means_a_0_100_light_that_must_not_get_more(rig) -> None:
+    # The H6006 on the bench: 255 acked, stored, and rendered dimmer than 100.
+    scale, reason = rig.scale_from(True, "yes", "dimmer")
+    assert scale == "100" and "DIMMER" in reason and "never send above 100" in reason
+    assert rig.scale_from(True, "no", "dimmer")[0] == "100"
