@@ -202,7 +202,10 @@ the light visibly did on each dialect, brightness scale, colour
 temperature, legacy scene codes, an optional app pairing with an HCI
 capture and a post-pairing re-check, then `govee_report.py` with your
 observations folded in. To keep the app's own frames from the pairing
-stage, capture on the phone; the wizard says how. Findings go to `bench/LABEL.env`, evidence to
+stage, capture on the phone; the wizard explains how and offers to inspect the
+extracted file once copied over. You can also run `python3 tools/analyse_capture.py FILE`
+later. See [phone capture guidance](phone-capture.md) for Android/iPhone steps,
+extraction and privacy limits. Findings go to `bench/LABEL.env`, evidence to
 `bench/LABEL-*.jsonl`, the report to `bench/LABEL-report.md`. The last
 stage prints the `fixtures/govee-models.json` row to add. Re-running keeps
 recorded values. `PYTHON=/path/to/python` overrides `~/rig/bin/python`.
