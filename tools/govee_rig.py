@@ -204,7 +204,7 @@ def describe_tx(frame: bytes) -> str:
     if frame[1] == protocol.CMD_MODE:
         sub = payload[0]
         if sub == protocol.SUBMODE_SCENE:
-            return f"{kind} scene {payload[1]:#04x}"
+            return f"{kind} scene {payload[1] | (payload[2] << 8):#04x}"
         if sub in SUBMODE_ALIASES.values():
             return f"{kind} {submode_label(sub)}"
         return f"{kind} mode sub-mode {sub:#04x}"
@@ -556,7 +556,9 @@ class RigLink:
             self.log.record("tx", frame, "heartbeat")
             try:
                 await self.client.write_gatt_char(
-                    const.CONTROL_CHARACTERISTIC_UUID, self._wrap(frame), response=False
+                    const.CONTROL_CHARACTERISTIC_UUID,
+                    self._wrap(frame),
+                    response=self.write_response and self.session is None,
                 )
             except (BleakError, OSError) as err:
                 print(f"heartbeat failed: {err}")

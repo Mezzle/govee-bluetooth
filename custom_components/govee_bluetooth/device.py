@@ -4,11 +4,11 @@ Design notes
 ------------
 * All Bluetooth access goes through Home Assistant's bluetooth integration, so
   ESPHome/Shelly Bluetooth proxies and local adapters are interchangeable.
-* Govee firmware drops an idle GATT connection after roughly ten seconds unless
-  the client sends ``AA 01`` every couple of seconds. While a connection is
-  open this class sends that heartbeat, and the reply doubles as a power-state
-  update. The connection is closed after ``idle_disconnect`` seconds without a
-  command so a proxy's connection slots are not held hostage by idle strips.
+* While a connection is open this class sends ``AA 01`` every two seconds
+  as a keep-alive, and the reply doubles as a power-state update. Device-side
+  idle timeouts vary and are not established for every model. The connection
+  is closed after ``idle_disconnect`` seconds without a command so a proxy's
+  connection slots are not held hostage by idle strips.
 * Commands and status reads are serialised through one lock. A Home Assistant
   ``light.turn_on`` with power, colour and brightness goes out as one batch on
   one connection.
@@ -98,6 +98,7 @@ class GoveeBleDevice:
         *,
         on_submode_observed: Callable[[int, str | None], None] | None = None,
         submode_locked: bool = False,
+        brightness_scale_locked: bool = False,
     ) -> None:
         self._hass = hass
         self.address = address.upper()
@@ -110,12 +111,14 @@ class GoveeBleDevice:
         # (a manual override in the options) only logs the disagreement.
         self._on_submode_observed = on_submode_observed
         self._submode_locked = submode_locked
+        self._brightness_scale_locked = brightness_scale_locked
 
         self._lock = asyncio.Lock()
         self._in_flight: asyncio.Task[Any] | None = None
         self._client: BleakClientWithServiceCache | None = None
-        self._write_response = True  # per connection, from the 2b11 properties
         self._expected_disconnect = False
+        self.control_properties: tuple[str, ...] = ()
+        self.write_response: bool | None = None
         self._heartbeat_task: asyncio.Task[None] | None = None
         self._idle_handle: asyncio.TimerHandle | None = None
         self._last_command_at = 0.0
@@ -286,7 +289,11 @@ class GoveeBleDevice:
         self.profile = replace(
             self.profile,
             color_submode=submode,
-            brightness_scale=brightness_scale_for_submode(submode, self.profile.brightness_scale),
+            brightness_scale=(
+                self.profile.brightness_scale
+                if self._brightness_scale_locked
+                else brightness_scale_for_submode(submode, self.profile.brightness_scale)
+            ),
         )
         if self._on_submode_observed is not None:
             self._on_submode_observed(submode, firmware or self.state.firmware)
@@ -391,32 +398,35 @@ class GoveeBleDevice:
             raise GoveeConnectionError(f"Could not connect to {self.name}: {err}") from err
 
         try:
+            characteristic = client.services.get_characteristic(CONTROL_CHARACTERISTIC_UUID)
+            if characteristic is None:
+                raise ValueError("Govee control characteristic is missing")
+            properties = tuple(characteristic.properties)
+            response = protocol.control_write_response(properties)
+        except (BleakError, ValueError) as err:
+            await client.disconnect()
+            raise GoveeConnectionError(
+                f"Unsupported GATT transport for {self.name}: {err}"
+            ) from err
+        self.control_properties = properties
+        self.write_response = response
+        _LOGGER.debug(
+            "%s control properties %s, write response=%s", self.name, properties, response
+        )
+
+        try:
             await client.start_notify(STATUS_CHARACTERISTIC_UUID, self._on_notify)
         except (BleakError, OSError) as err:
             # Not fatal: writes still work, we just lose read-back.
             _LOGGER.debug("Could not subscribe to %s notifications: %s", self.name, err)
 
         self._client = client
-        self._write_response = self._control_write_response(client)
         self._expected_disconnect = False
         self._touch()
         self._heartbeat_task = self._hass.async_create_background_task(
             self._async_heartbeat_loop(client), f"{self.name} heartbeat"
         )
         return client
-
-    def _control_write_response(self, client: BleakClientWithServiceCache) -> bool:
-        """With or without response, from what ``2b11`` offers (see protocol.control_write_response)."""
-        services = getattr(client, "services", None)
-        try:
-            control = services.get_characteristic(CONTROL_CHARACTERISTIC_UUID) if services else None
-        except (BleakError, AttributeError):
-            control = None
-        properties = getattr(control, "properties", None) if control is not None else None
-        response = protocol.control_write_response(properties)
-        if not response:
-            _LOGGER.debug("%s: control characteristic is write-without-response only", self.name)
-        return response
 
     async def _async_write_frames(self, frames: list[bytes]) -> None:
         if not frames:
@@ -429,7 +439,7 @@ class GoveeBleDevice:
                     _LOGGER.debug("%s -> %s", self.name, frame.hex())
                     self._record_frame("tx", frame, "command")
                     await client.write_gatt_char(
-                        CONTROL_CHARACTERISTIC_UUID, frame, response=self._write_response
+                        CONTROL_CHARACTERISTIC_UUID, frame, response=self.write_response
                     )
                     if index < len(frames) - 1:
                         await asyncio.sleep(INTER_FRAME_DELAY)
@@ -450,7 +460,7 @@ class GoveeBleDevice:
             _LOGGER.debug("%s -> %s (query)", self.name, frame.hex())
             self._record_frame("tx", frame, "query")
             await client.write_gatt_char(
-                CONTROL_CHARACTERISTIC_UUID, frame, response=self._write_response
+                CONTROL_CHARACTERISTIC_UUID, frame, response=self.write_response
             )
             return await asyncio.wait_for(future, QUERY_TIMEOUT)
         except TimeoutError:
@@ -550,7 +560,9 @@ class GoveeBleDevice:
                 try:
                     self._record_frame("tx", protocol.heartbeat_frame(), "heartbeat")
                     await client.write_gatt_char(
-                        CONTROL_CHARACTERISTIC_UUID, protocol.heartbeat_frame(), response=False
+                        CONTROL_CHARACTERISTIC_UUID,
+                        protocol.heartbeat_frame(),
+                        response=self.write_response,
                     )
                 except (BleakError, OSError) as err:
                     _LOGGER.debug("%s heartbeat failed: %s", self.name, err)
@@ -573,7 +585,7 @@ class _ProbeLink:
             _LOGGER.debug("%s -> %s (probe)", self._device.name, frame.hex())
             self._device._record_frame("tx", frame, "probe")
             await self._client.write_gatt_char(
-                CONTROL_CHARACTERISTIC_UUID, frame, response=self._device._write_response
+                CONTROL_CHARACTERISTIC_UUID, frame, response=self._device.write_response
             )
             await asyncio.sleep(INTER_FRAME_DELAY)
         except (BleakError, TimeoutError, OSError) as err:

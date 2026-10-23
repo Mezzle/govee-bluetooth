@@ -1,0 +1,13 @@
+{
+  "source": "Discoball bench session, 2026-10-23 UTC; see docs/protocol-review-2026-10-23.md",
+  "captures": [
+    {"model": "H6159", "frame": "aa010000000000000000000000000000000000ab", "power": false},
+    {"model": "H6159", "frame": "aa041a00000000000000000000000000000000b4", "brightness_level": 26},
+    {"model": "H6159", "frame": "aa0502d6e2ff0000000000000000000000000066", "submode": 2, "rgb": [214, 226, 255]},
+    {"model": "H6181", "frame": "aa06322e30332e3131000000000000000000009d", "version": "2.03.11"},
+    {"model": "H6181", "frame": "aa041e00000000000000000000000000000000b0", "brightness_level": 30},
+    {"model": "H6181", "frame": "aa050d12345600000000000000000000000000d2", "submode": 13, "rgb": [18, 52, 86]},
+    {"model": "H6181", "frame": "aa050dffffff10ccffd5b3000000000000000018", "submode": 13, "kelvin": 4300},
+    {"model": "H6181", "frame": "aa050dffffff000000000000000000000000005d", "submode": 13, "rgb": [255, 255, 255], "kelvin": null}
+  ]
+}

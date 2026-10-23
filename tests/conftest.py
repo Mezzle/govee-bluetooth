@@ -136,6 +136,8 @@ class FakeGoveeClient:
             # What the H6006 did on the bench: ATT error, then it drops the link.
             self.is_connected = False
             raise BleakError("GATT Protocol Error: Write Not Permitted")
+        if response is False and "write-without-response" not in self.control_properties:
+            raise BleakError("write without response unsupported")
         self.writes.append(frame)
         self.write_responses.append(response)
         if frame[0] == protocol.TYPE_WRITE:

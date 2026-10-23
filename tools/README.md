@@ -58,7 +58,7 @@ The command vocabulary is the same for `send`, `verify` and `shell`:
 | `bri N` | `33 04 N`, N is the raw device byte, not the HA 1-255 value |
 | `rgb R G B` | `protocol.rgb_frame` in the current sub-mode |
 | `ct K` | `protocol.color_temp_frame` in the current sub-mode (`0x0B` has none) |
-| `scene ID` | `33 05 04 ID` |
+| `scene ID` | `33 05 04 <ID lo> <ID hi>` (16-bit little-endian) |
 | `raw HEX...` | padded to 19 bytes and checksummed, or sent as-is if 20 bytes |
 | `read` | version, power, brightness and mode queries |
 | `mode`, `power`, `brightness`, `version` | one query |

@@ -72,7 +72,11 @@ def control_write_response(properties: Iterable[str] | None) -> bool:
     props = {str(p).lower() for p in (properties or ())}
     if not props:
         return True
-    return "write" in props
+    if "write" in props:
+        return True
+    if "write-without-response" in props:
+        return False
+    raise ValueError("Govee control characteristic has no supported write procedure")
 
 
 def checksum(data: Iterable[int]) -> int:
@@ -208,9 +212,10 @@ def color_temp_frame(kelvin: int, submode: int = SUBMODE_COLOR_LEGACY) -> bytes:
 
 
 def scene_frame(scene_id: int) -> bytes:
-    if not 0 <= scene_id <= 0xFF:
-        raise ValueError("Scene id must fit in one byte")
-    return build_frame(CMD_MODE, [SUBMODE_SCENE, scene_id])
+    """Build a scene command with the app's little-endian 16-bit scene code."""
+    if not 0 <= scene_id <= 0xFFFF:
+        raise ValueError("Scene id must fit in two bytes")
+    return build_frame(CMD_MODE, [SUBMODE_SCENE, scene_id & 0xFF, scene_id >> 8])
 
 
 # ---------------------------------------------------------------------------
@@ -231,7 +236,7 @@ def brightness_query_frame() -> bytes:
 
 
 def mode_query_frame() -> bytes:
-    """``AA 05 01``: the ``01`` selector is required for mode reads."""
+    """``AA 05 01``: use the app's selector for mode reads."""
     return build_frame(CMD_MODE, [0x01], frame_type=TYPE_READ)
 
 
@@ -467,7 +472,7 @@ def _parse_mode(payload: bytes) -> ModeReport:
         # is trusted here until a dreamcolor light is read back on the bench.
         pass
     elif submode == SUBMODE_SCENE:
-        report.scene_id = payload[1]
+        report.scene_id = payload[1] | (payload[2] << 8)
     return report
 
 

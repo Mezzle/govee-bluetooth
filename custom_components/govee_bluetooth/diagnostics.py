@@ -52,6 +52,10 @@ async def async_get_config_entry_diagnostics(
             "connectable_scanners": bluetooth.async_scanner_count(hass, connectable=True),
             "reachability": _reachability(hass, device.address),
         },
+        "transport": {
+            "control_properties": list(device.control_properties),
+            "write_response": device.write_response,
+        },
         "last_update_success": coordinator.last_update_success,
         # Raw frames, oldest first: "tx" is what this integration sent, "rx"
         # what the light answered. Hex, with the 0x33/0xAA type byte first.
