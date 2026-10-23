@@ -1,0 +1,57 @@
+{"at": "2026-10-23T20:16:21.396+00:00", "direction": "tx", "frame": "aa060000000000000000000000000000000000ac", "note": "query", "decoded": "read version", "address": "A4:C1:38:9C:8E:17"}
+{"at": "2026-10-23T20:16:23.909+00:00", "direction": "tx", "frame": "aa010000000000000000000000000000000000ab", "note": "query", "decoded": "read power (heartbeat)", "address": "A4:C1:38:9C:8E:17"}
+{"at": "2026-10-23T20:16:23.975+00:00", "direction": "rx", "frame": "aa010100000000000000000000000000000000aa", "note": "reply", "decoded": "power on", "address": "A4:C1:38:9C:8E:17"}
+{"at": "2026-10-23T20:16:23.977+00:00", "direction": "tx", "frame": "aa040000000000000000000000000000000000ae", "note": "query", "decoded": "read brightness", "address": "A4:C1:38:9C:8E:17"}
+{"at": "2026-10-23T20:16:24.072+00:00", "direction": "rx", "frame": "aa041a00000000000000000000000000000000b4", "note": "reply", "decoded": "brightness level 26", "address": "A4:C1:38:9C:8E:17"}
+{"at": "2026-10-23T20:16:24.075+00:00", "direction": "tx", "frame": "aa050100000000000000000000000000000000ae", "note": "query", "decoded": "read mode", "address": "A4:C1:38:9C:8E:17"}
+{"at": "2026-10-23T20:16:24.239+00:00", "direction": "rx", "frame": "aa0502d6e2ff0000000000000000000000000066", "note": "reply", "decoded": "mode colour (0x02, H6159 dialect), rgb 214 226 255", "address": "A4:C1:38:9C:8E:17"}
+{"at": "2026-10-23T20:16:59.594+00:00", "direction": "tx", "frame": "aa010000000000000000000000000000000000ab", "note": "query", "decoded": "read power (heartbeat)", "address": "A4:C1:38:9C:8E:17"}
+{"at": "2026-10-23T20:16:59.672+00:00", "direction": "rx", "frame": "aa010100000000000000000000000000000000aa", "note": "reply", "decoded": "power on", "address": "A4:C1:38:9C:8E:17"}
+{"at": "2026-10-23T20:16:59.675+00:00", "direction": "tx", "frame": "aa040000000000000000000000000000000000ae", "note": "query", "decoded": "read brightness", "address": "A4:C1:38:9C:8E:17"}
+{"at": "2026-10-23T20:16:59.887+00:00", "direction": "rx", "frame": "aa041a00000000000000000000000000000000b4", "note": "reply", "decoded": "brightness level 26", "address": "A4:C1:38:9C:8E:17"}
+{"at": "2026-10-23T20:16:59.899+00:00", "direction": "tx", "frame": "aa050100000000000000000000000000000000ae", "note": "query", "decoded": "read mode", "address": "A4:C1:38:9C:8E:17"}
+{"at": "2026-10-23T20:17:00.104+00:00", "direction": "rx", "frame": "aa0502d6e2ff0000000000000000000000000066", "note": "reply", "decoded": "mode colour (0x02, H6159 dialect), rgb 214 226 255", "address": "A4:C1:38:9C:8E:17"}
+{"at": "2026-10-23T20:17:00.106+00:00", "direction": "tx", "frame": "33041e0000000000000000000000000000000029", "note": "command", "decoded": "write brightness level 30", "address": "A4:C1:38:9C:8E:17"}
+{"at": "2026-10-23T20:17:00.254+00:00", "direction": "rx", "frame": "3304000000000000000000000000000000000037", "note": "ack", "decoded": "ack brightness write: accepted", "address": "A4:C1:38:9C:8E:17"}
+{"at": "2026-10-23T20:17:00.432+00:00", "direction": "tx", "frame": "aa040000000000000000000000000000000000ae", "note": "query", "decoded": "read brightness", "address": "A4:C1:38:9C:8E:17"}
+{"at": "2026-10-23T20:17:00.517+00:00", "direction": "rx", "frame": "aa041e00000000000000000000000000000000b0", "note": "reply", "decoded": "brightness level 30", "address": "A4:C1:38:9C:8E:17"}
+{"summary": "verify", "schema": "govee-evidence/1", "source": "pi", "at": "2026-10-23T20:17:00.522+00:00", "address": "A4:C1:38:9C:8E:17", "action": "brightness", "args": [30], "echoed": true, "verdict": "brightness: ECHOED"}
+{"at": "2026-10-23T20:17:00.524+00:00", "direction": "tx", "frame": "3305021234560000000000000000000000000044", "note": "command", "decoded": "write colour (0x02, H6159 dialect)", "address": "A4:C1:38:9C:8E:17"}
+{"at": "2026-10-23T20:17:00.591+00:00", "direction": "rx", "frame": "3305000000000000000000000000000000000036", "note": "ack", "decoded": "ack mode write: accepted", "address": "A4:C1:38:9C:8E:17"}
+{"at": "2026-10-23T20:17:00.849+00:00", "direction": "tx", "frame": "aa050100000000000000000000000000000000ae", "note": "query", "decoded": "read mode", "address": "A4:C1:38:9C:8E:17"}
+{"at": "2026-10-23T20:17:00.932+00:00", "direction": "rx", "frame": "aa050212345600000000000000000000000000dd", "note": "reply", "decoded": "mode colour (0x02, H6159 dialect), rgb  18  52  86", "address": "A4:C1:38:9C:8E:17"}
+{"summary": "verify", "schema": "govee-evidence/1", "source": "pi", "at": "2026-10-23T20:17:00.934+00:00", "address": "A4:C1:38:9C:8E:17", "action": "rgb", "args": [2, [18, 52, 86]], "echoed": true, "verdict": "rgb: ECHOED"}
+{"at": "2026-10-23T20:17:00.936+00:00", "direction": "tx", "frame": "330502ffffff01ffd5b300000000000000000053", "note": "command", "decoded": "write colour (0x02, H6159 dialect)", "address": "A4:C1:38:9C:8E:17"}
+{"at": "2026-10-23T20:17:01.122+00:00", "direction": "rx", "frame": "3305000000000000000000000000000000000036", "note": "ack", "decoded": "ack mode write: accepted", "address": "A4:C1:38:9C:8E:17"}
+{"at": "2026-10-23T20:17:01.258+00:00", "direction": "tx", "frame": "aa050100000000000000000000000000000000ae", "note": "query", "decoded": "read mode", "address": "A4:C1:38:9C:8E:17"}
+{"at": "2026-10-23T20:17:01.342+00:00", "direction": "rx", "frame": "aa0502ffffff01ffd5b3000000000000000000ca", "note": "reply", "decoded": "mode colour (0x02, H6159 dialect), rgb 255 255 255, white", "address": "A4:C1:38:9C:8E:17"}
+{"summary": "verify", "schema": "govee-evidence/1", "source": "pi", "at": "2026-10-23T20:17:01.345+00:00", "address": "A4:C1:38:9C:8E:17", "action": "ct", "args": [2, 4300], "echoed": true, "verdict": "ct: ECHOED (white flag + tint (255, 213, 179))"}
+{"at": "2026-10-23T20:17:01.347+00:00", "direction": "tx", "frame": "330502d6e2ff00000000000000000000000000ff", "note": "command", "decoded": "write colour (0x02, H6159 dialect)", "address": "A4:C1:38:9C:8E:17"}
+{"at": "2026-10-23T20:17:01.421+00:00", "direction": "rx", "frame": "3305000000000000000000000000000000000036", "note": "ack", "decoded": "ack mode write: accepted", "address": "A4:C1:38:9C:8E:17"}
+{"at": "2026-10-23T20:17:01.677+00:00", "direction": "tx", "frame": "aa050100000000000000000000000000000000ae", "note": "query", "decoded": "read mode", "address": "A4:C1:38:9C:8E:17"}
+{"at": "2026-10-23T20:17:01.830+00:00", "direction": "rx", "frame": "aa0502d6e2ff0000000000000000000000000066", "note": "reply", "decoded": "mode colour (0x02, H6159 dialect), rgb 214 226 255", "address": "A4:C1:38:9C:8E:17"}
+{"summary": "verify", "schema": "govee-evidence/1", "source": "pi", "at": "2026-10-23T20:17:01.832+00:00", "address": "A4:C1:38:9C:8E:17", "action": "rgb", "args": [2, [214, 226, 255]], "echoed": true, "verdict": "rgb: ECHOED"}
+{"at": "2026-10-23T20:17:01.834+00:00", "direction": "tx", "frame": "33041a000000000000000000000000000000002d", "note": "command", "decoded": "write brightness level 26", "address": "A4:C1:38:9C:8E:17"}
+{"at": "2026-10-23T20:17:01.908+00:00", "direction": "rx", "frame": "3304000000000000000000000000000000000037", "note": "ack", "decoded": "ack brightness write: accepted", "address": "A4:C1:38:9C:8E:17"}
+{"at": "2026-10-23T20:17:02.168+00:00", "direction": "tx", "frame": "aa040000000000000000000000000000000000ae", "note": "query", "decoded": "read brightness", "address": "A4:C1:38:9C:8E:17"}
+{"at": "2026-10-23T20:17:02.241+00:00", "direction": "rx", "frame": "aa041a00000000000000000000000000000000b4", "note": "reply", "decoded": "brightness level 26", "address": "A4:C1:38:9C:8E:17"}
+{"summary": "verify", "schema": "govee-evidence/1", "source": "pi", "at": "2026-10-23T20:17:02.243+00:00", "address": "A4:C1:38:9C:8E:17", "action": "brightness", "args": [26], "echoed": true, "verdict": "brightness: ECHOED"}
+{"at": "2026-10-23T20:17:02.244+00:00", "direction": "tx", "frame": "3301010000000000000000000000000000000033", "note": "command", "decoded": "write power on", "address": "A4:C1:38:9C:8E:17"}
+{"at": "2026-10-23T20:17:02.319+00:00", "direction": "rx", "frame": "3301000000000000000000000000000000000032", "note": "ack", "decoded": "ack power write: accepted", "address": "A4:C1:38:9C:8E:17"}
+{"at": "2026-10-23T20:17:02.572+00:00", "direction": "tx", "frame": "aa010000000000000000000000000000000000ab", "note": "query", "decoded": "read power (heartbeat)", "address": "A4:C1:38:9C:8E:17"}
+{"at": "2026-10-23T20:17:02.691+00:00", "direction": "rx", "frame": "aa010100000000000000000000000000000000aa", "note": "reply", "decoded": "power on", "address": "A4:C1:38:9C:8E:17"}
+{"summary": "verify", "schema": "govee-evidence/1", "source": "pi", "at": "2026-10-23T20:17:02.693+00:00", "address": "A4:C1:38:9C:8E:17", "action": "power", "args": [true], "echoed": true, "verdict": "power: ECHOED"}
+{"at": "2026-10-23T20:17:02.694+00:00", "direction": "tx", "frame": "aa060000000000000000000000000000000000ac", "note": "query", "decoded": "read version", "address": "A4:C1:38:9C:8E:17"}
+{"at": "2026-10-23T20:17:02.805+00:00", "direction": "rx", "frame": "aa06312e30372e30320000000000000000000098", "note": "reply", "decoded": "firmware 1.07.02", "address": "A4:C1:38:9C:8E:17"}
+{"at": "2026-10-23T20:17:02.808+00:00", "direction": "tx", "frame": "aa010000000000000000000000000000000000ab", "note": "query", "decoded": "read power (heartbeat)", "address": "A4:C1:38:9C:8E:17"}
+{"at": "2026-10-23T20:17:02.878+00:00", "direction": "rx", "frame": "aa010100000000000000000000000000000000aa", "note": "reply", "decoded": "power on", "address": "A4:C1:38:9C:8E:17"}
+{"at": "2026-10-23T20:17:02.884+00:00", "direction": "tx", "frame": "aa040000000000000000000000000000000000ae", "note": "query", "decoded": "read brightness", "address": "A4:C1:38:9C:8E:17"}
+{"at": "2026-10-23T20:17:02.953+00:00", "direction": "rx", "frame": "aa041a00000000000000000000000000000000b4", "note": "reply", "decoded": "brightness level 26", "address": "A4:C1:38:9C:8E:17"}
+{"at": "2026-10-23T20:17:02.955+00:00", "direction": "tx", "frame": "aa050100000000000000000000000000000000ae", "note": "query", "decoded": "read mode", "address": "A4:C1:38:9C:8E:17"}
+{"at": "2026-10-23T20:17:03.032+00:00", "direction": "rx", "frame": "aa0502d6e2ff0000000000000000000000000066", "note": "reply", "decoded": "mode colour (0x02, H6159 dialect), rgb 214 226 255", "address": "A4:C1:38:9C:8E:17"}
+{"at": "2026-10-23T20:17:04.602+00:00", "direction": "tx", "frame": "aa010000000000000000000000000000000000ab", "note": "heartbeat", "decoded": "read power (heartbeat)", "address": "A4:C1:38:9C:8E:17"}
+{"at": "2026-10-23T20:17:04.680+00:00", "direction": "rx", "frame": "aa010100000000000000000000000000000000aa", "note": "heartbeat", "decoded": "power on", "address": "A4:C1:38:9C:8E:17"}
+{"at": "2026-10-23T20:17:06.617+00:00", "direction": "tx", "frame": "aa010000000000000000000000000000000000ab", "note": "heartbeat", "decoded": "read power (heartbeat)", "address": "A4:C1:38:9C:8E:17"}
+{"at": "2026-10-23T20:17:06.707+00:00", "direction": "rx", "frame": "aa010100000000000000000000000000000000aa", "note": "heartbeat", "decoded": "power on", "address": "A4:C1:38:9C:8E:17"}
+{"at": "2026-10-23T20:17:08.636+00:00", "direction": "tx", "frame": "aa010000000000000000000000000000000000ab", "note": "heartbeat", "decoded": "read power (heartbeat)", "address": "A4:C1:38:9C:8E:17"}
+{"at": "2026-10-23T20:17:08.692+00:00", "direction": "rx", "frame": "aa010100000000000000000000000000000000aa", "note": "heartbeat", "decoded": "power on", "address": "A4:C1:38:9C:8E:17"}
