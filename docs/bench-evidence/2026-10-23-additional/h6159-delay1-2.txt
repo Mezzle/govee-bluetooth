@@ -1,0 +1,13 @@
+profile: Govee RGB strip (H6159 family); colour sub-mode colour (0x02, H6159 dialect), brightness scale 255
+connecting to A4:C1:38:9C:8E:17 ...
+connected (mtu 23); 2b11 ['read', 'write-without-response'], writing without response
+2b12 (BGC info): 00 -> encryptVersion 0 (both candidate bytes zero (plaintext))
+20:12:53.731 TX aa010000000000000000000000000000000000ab  query       read power (heartbeat)
+20:12:53.818 RX aa010100000000000000000000000000000000aa  reply       power on
+20:12:53.823 TX aa040000000000000000000000000000000000ae  query       read brightness
+20:12:53.963 RX aa041a00000000000000000000000000000000b4  reply       brightness level 26
+20:12:53.966 TX aa050100000000000000000000000000000000ae  query       read mode
+20:12:54.120 RX aa0502d6e2ff0000000000000000000000000066  reply       mode colour (0x02, H6159 dialect), rgb 214 226 255
+** light disconnected **
+/home/homelab-operator/rig/lib/python3.13/site-packages/bleak/backends/bluezdbus/client.py:646: UserWarning: Using default MTU value. Call _acquire_mtu() or set _mtu_size first to avoid this warning.
+  warnings.warn(

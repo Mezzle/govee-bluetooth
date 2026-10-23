@@ -1,0 +1,23 @@
+profile: Govee RGB strip (H6159 family); colour sub-mode colour (0x02, H6159 dialect), brightness scale 255
+connecting to A4:C1:38:9C:8E:17 ...
+/home/homelab-operator/rig/lib/python3.13/site-packages/bleak/backends/bluezdbus/client.py:646: UserWarning: Using default MTU value. Call _acquire_mtu() or set _mtu_size first to avoid this warning.
+  warnings.warn(
+connected (mtu 23); 2b11 ['read', 'write-without-response'], writing without response
+2b12 (BGC info): 00 -> encryptVersion 0 (both candidate bytes zero (plaintext))
+20:07:44.956 TX aa060000000000000000000000000000000000ac  query       read version
+            -- no reply to version query within 2.5s
+20:07:47.470 TX aa010000000000000000000000000000000000ab  query       read power (heartbeat)
+20:07:47.585 RX aa010100000000000000000000000000000000aa  reply       power on
+20:07:47.588 TX aa040000000000000000000000000000000000ae  query       read brightness
+20:07:47.683 RX aa041a00000000000000000000000000000000b4  reply       brightness level 26
+20:07:47.686 TX aa050100000000000000000000000000000000ae  query       read mode
+20:07:47.785 RX aa0502d6e2ff0000000000000000000000000066  reply       mode colour (0x02, H6159 dialect), rgb 214 226 255
+
+safe probe result:
+  firmware   : None
+  power      : True
+  brightness : 26 (raw device byte)
+  mode       : colour (0x02, H6159 dialect), rgb 214 226 255
+  outcome    : color
+  detected   : colour (0x02, H6159 dialect)
+** light disconnected **

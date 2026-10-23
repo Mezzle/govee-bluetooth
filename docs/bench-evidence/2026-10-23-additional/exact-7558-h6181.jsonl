@@ -1,0 +1,58 @@
+{"at": "2026-10-23T20:12:24.930+00:00", "direction": "tx", "frame": "aa010000000000000000000000000000000000ab", "note": "query", "decoded": "read power (heartbeat)", "address": "60:74:F4:6A:FB:1E"}
+{"at": "2026-10-23T20:12:25.918+00:00", "direction": "rx", "frame": "aa010100000000000000000000000000000000aa", "note": "reply", "decoded": "power on", "address": "60:74:F4:6A:FB:1E"}
+{"at": "2026-10-23T20:12:25.927+00:00", "direction": "tx", "frame": "aa040000000000000000000000000000000000ae", "note": "query", "decoded": "read brightness", "address": "60:74:F4:6A:FB:1E"}
+{"at": "2026-10-23T20:12:27.535+00:00", "direction": "rx", "frame": "aa046400000000000000000000000000000000ca", "note": "reply", "decoded": "brightness level 100", "address": "60:74:F4:6A:FB:1E"}
+{"at": "2026-10-23T20:12:27.537+00:00", "direction": "tx", "frame": "aa050100000000000000000000000000000000ae", "note": "query", "decoded": "read mode", "address": "60:74:F4:6A:FB:1E"}
+{"at": "2026-10-23T20:12:29.383+00:00", "direction": "rx", "frame": "aa050dffffff000000000000000000000000005d", "note": "reply", "decoded": "mode colour (0x0D, RGBWW dialect), rgb 255 255 255", "address": "60:74:F4:6A:FB:1E"}
+{"at": "2026-10-23T20:12:29.385+00:00", "direction": "tx", "frame": "33041e0000000000000000000000000000000029", "note": "command", "decoded": "write brightness level 30", "address": "60:74:F4:6A:FB:1E"}
+{"at": "2026-10-23T20:12:29.750+00:00", "direction": "rx", "frame": "3304000000000000000000000000000000000037", "note": "ack", "decoded": "ack brightness write: accepted", "address": "60:74:F4:6A:FB:1E"}
+{"at": "2026-10-23T20:12:29.981+00:00", "direction": "tx", "frame": "aa040000000000000000000000000000000000ae", "note": "query", "decoded": "read brightness", "address": "60:74:F4:6A:FB:1E"}
+{"at": "2026-10-23T20:12:30.106+00:00", "direction": "rx", "frame": "aa041e00000000000000000000000000000000b0", "note": "reply", "decoded": "brightness level 30", "address": "60:74:F4:6A:FB:1E"}
+{"summary": "verify", "schema": "govee-evidence/1", "source": "pi", "at": "2026-10-23T20:12:30.121+00:00", "address": "60:74:F4:6A:FB:1E", "action": "brightness", "args": [30], "echoed": true, "verdict": "brightness: ECHOED"}
+{"at": "2026-10-23T20:12:30.123+00:00", "direction": "tx", "frame": "33050d123456000000000000000000000000004b", "note": "command", "decoded": "write colour (0x0D, RGBWW dialect)", "address": "60:74:F4:6A:FB:1E"}
+{"at": "2026-10-23T20:12:30.204+00:00", "direction": "rx", "frame": "3305000000000000000000000000000000000036", "note": "ack", "decoded": "ack mode write: accepted", "address": "60:74:F4:6A:FB:1E"}
+{"at": "2026-10-23T20:12:30.469+00:00", "direction": "tx", "frame": "aa050100000000000000000000000000000000ae", "note": "query", "decoded": "read mode", "address": "60:74:F4:6A:FB:1E"}
+{"at": "2026-10-23T20:12:30.551+00:00", "direction": "rx", "frame": "aa050d12345600000000000000000000000000d2", "note": "reply", "decoded": "mode colour (0x0D, RGBWW dialect), rgb  18  52  86", "address": "60:74:F4:6A:FB:1E"}
+{"summary": "verify", "schema": "govee-evidence/1", "source": "pi", "at": "2026-10-23T20:12:30.552+00:00", "address": "60:74:F4:6A:FB:1E", "action": "rgb", "args": [13, [18, 52, 86]], "echoed": true, "verdict": "rgb: ECHOED"}
+{"at": "2026-10-23T20:12:30.554+00:00", "direction": "tx", "frame": "33050dffffff10ccffd5b3000000000000000081", "note": "command", "decoded": "write colour (0x0D, RGBWW dialect)", "address": "60:74:F4:6A:FB:1E"}
+{"at": "2026-10-23T20:12:30.692+00:00", "direction": "rx", "frame": "3305000000000000000000000000000000000036", "note": "ack", "decoded": "ack mode write: accepted", "address": "60:74:F4:6A:FB:1E"}
+{"at": "2026-10-23T20:12:30.901+00:00", "direction": "tx", "frame": "aa050100000000000000000000000000000000ae", "note": "query", "decoded": "read mode", "address": "60:74:F4:6A:FB:1E"}
+{"at": "2026-10-23T20:12:30.990+00:00", "direction": "rx", "frame": "aa050dffffff10ccffd5b3000000000000000018", "note": "reply", "decoded": "mode colour (0x0D, RGBWW dialect), rgb 255 255 255, 4300 K, white", "address": "60:74:F4:6A:FB:1E"}
+{"summary": "verify", "schema": "govee-evidence/1", "source": "pi", "at": "2026-10-23T20:12:30.992+00:00", "address": "60:74:F4:6A:FB:1E", "action": "ct", "args": [13, 4300], "echoed": true, "verdict": "ct: ECHOED (4300 K)"}
+{"at": "2026-10-23T20:12:30.993+00:00", "direction": "tx", "frame": "33050dffffff00000000000000000000000000c4", "note": "command", "decoded": "write colour (0x0D, RGBWW dialect)", "address": "60:74:F4:6A:FB:1E"}
+{"at": "2026-10-23T20:12:31.141+00:00", "direction": "rx", "frame": "3305000000000000000000000000000000000036", "note": "ack", "decoded": "ack mode write: accepted", "address": "60:74:F4:6A:FB:1E"}
+{"at": "2026-10-23T20:12:31.330+00:00", "direction": "tx", "frame": "aa050100000000000000000000000000000000ae", "note": "query", "decoded": "read mode", "address": "60:74:F4:6A:FB:1E"}
+{"at": "2026-10-23T20:12:31.426+00:00", "direction": "rx", "frame": "aa050dffffff000000000000000000000000005d", "note": "reply", "decoded": "mode colour (0x0D, RGBWW dialect), rgb 255 255 255", "address": "60:74:F4:6A:FB:1E"}
+{"summary": "verify", "schema": "govee-evidence/1", "source": "pi", "at": "2026-10-23T20:12:31.428+00:00", "address": "60:74:F4:6A:FB:1E", "action": "rgb", "args": [13, [255, 255, 255]], "echoed": true, "verdict": "rgb: ECHOED"}
+{"at": "2026-10-23T20:12:31.443+00:00", "direction": "tx", "frame": "3304640000000000000000000000000000000053", "note": "command", "decoded": "write brightness level 100", "address": "60:74:F4:6A:FB:1E"}
+{"at": "2026-10-23T20:12:31.530+00:00", "direction": "rx", "frame": "3304000000000000000000000000000000000037", "note": "ack", "decoded": "ack brightness write: accepted", "address": "60:74:F4:6A:FB:1E"}
+{"at": "2026-10-23T20:12:31.783+00:00", "direction": "tx", "frame": "aa040000000000000000000000000000000000ae", "note": "query", "decoded": "read brightness", "address": "60:74:F4:6A:FB:1E"}
+{"at": "2026-10-23T20:12:31.871+00:00", "direction": "rx", "frame": "aa046400000000000000000000000000000000ca", "note": "reply", "decoded": "brightness level 100", "address": "60:74:F4:6A:FB:1E"}
+{"summary": "verify", "schema": "govee-evidence/1", "source": "pi", "at": "2026-10-23T20:12:31.873+00:00", "address": "60:74:F4:6A:FB:1E", "action": "brightness", "args": [100], "echoed": true, "verdict": "brightness: ECHOED"}
+{"at": "2026-10-23T20:12:31.874+00:00", "direction": "tx", "frame": "3301010000000000000000000000000000000033", "note": "command", "decoded": "write power on", "address": "60:74:F4:6A:FB:1E"}
+{"at": "2026-10-23T20:12:32.019+00:00", "direction": "rx", "frame": "3301000000000000000000000000000000000032", "note": "ack", "decoded": "ack power write: accepted", "address": "60:74:F4:6A:FB:1E"}
+{"at": "2026-10-23T20:12:32.208+00:00", "direction": "tx", "frame": "aa010000000000000000000000000000000000ab", "note": "query", "decoded": "read power (heartbeat)", "address": "60:74:F4:6A:FB:1E"}
+{"at": "2026-10-23T20:12:32.310+00:00", "direction": "rx", "frame": "aa010100000000000000000000000000000000aa", "note": "reply", "decoded": "power on", "address": "60:74:F4:6A:FB:1E"}
+{"summary": "verify", "schema": "govee-evidence/1", "source": "pi", "at": "2026-10-23T20:12:32.312+00:00", "address": "60:74:F4:6A:FB:1E", "action": "power", "args": [true], "echoed": true, "verdict": "power: ECHOED"}
+{"at": "2026-10-23T20:12:38.316+00:00", "direction": "tx", "frame": "aa060000000000000000000000000000000000ac", "note": "query", "decoded": "read version", "address": "60:74:F4:6A:FB:1E"}
+{"at": "2026-10-23T20:12:38.403+00:00", "direction": "rx", "frame": "aa06322e30332e3131000000000000000000009d", "note": "reply", "decoded": "firmware 2.03.11", "address": "60:74:F4:6A:FB:1E"}
+{"at": "2026-10-23T20:12:38.405+00:00", "direction": "tx", "frame": "aa010000000000000000000000000000000000ab", "note": "query", "decoded": "read power (heartbeat)", "address": "60:74:F4:6A:FB:1E"}
+{"at": "2026-10-23T20:12:38.549+00:00", "direction": "rx", "frame": "aa010100000000000000000000000000000000aa", "note": "reply", "decoded": "power on", "address": "60:74:F4:6A:FB:1E"}
+{"at": "2026-10-23T20:12:38.552+00:00", "direction": "tx", "frame": "aa040000000000000000000000000000000000ae", "note": "query", "decoded": "read brightness", "address": "60:74:F4:6A:FB:1E"}
+{"at": "2026-10-23T20:12:38.701+00:00", "direction": "rx", "frame": "aa046400000000000000000000000000000000ca", "note": "reply", "decoded": "brightness level 100", "address": "60:74:F4:6A:FB:1E"}
+{"at": "2026-10-23T20:12:38.703+00:00", "direction": "tx", "frame": "aa050100000000000000000000000000000000ae", "note": "query", "decoded": "read mode", "address": "60:74:F4:6A:FB:1E"}
+{"at": "2026-10-23T20:12:38.850+00:00", "direction": "rx", "frame": "aa050dffffff000000000000000000000000005d", "note": "reply", "decoded": "mode colour (0x0D, RGBWW dialect), rgb 255 255 255", "address": "60:74:F4:6A:FB:1E"}
+{"at": "2026-10-23T20:12:55.338+00:00", "direction": "tx", "frame": "aa060000000000000000000000000000000000ac", "note": "query", "decoded": "read version", "address": "60:74:F4:6A:FB:1E"}
+{"at": "2026-10-23T20:12:55.435+00:00", "direction": "rx", "frame": "aa06322e30332e3131000000000000000000009d", "note": "reply", "decoded": "firmware 2.03.11", "address": "60:74:F4:6A:FB:1E"}
+{"at": "2026-10-23T20:12:55.438+00:00", "direction": "tx", "frame": "aa010000000000000000000000000000000000ab", "note": "query", "decoded": "read power (heartbeat)", "address": "60:74:F4:6A:FB:1E"}
+{"at": "2026-10-23T20:12:55.508+00:00", "direction": "rx", "frame": "aa010100000000000000000000000000000000aa", "note": "reply", "decoded": "power on", "address": "60:74:F4:6A:FB:1E"}
+{"at": "2026-10-23T20:12:55.512+00:00", "direction": "tx", "frame": "aa040000000000000000000000000000000000ae", "note": "query", "decoded": "read brightness", "address": "60:74:F4:6A:FB:1E"}
+{"at": "2026-10-23T20:12:55.583+00:00", "direction": "rx", "frame": "aa046400000000000000000000000000000000ca", "note": "reply", "decoded": "brightness level 100", "address": "60:74:F4:6A:FB:1E"}
+{"at": "2026-10-23T20:12:55.585+00:00", "direction": "tx", "frame": "aa050100000000000000000000000000000000ae", "note": "query", "decoded": "read mode", "address": "60:74:F4:6A:FB:1E"}
+{"at": "2026-10-23T20:12:55.660+00:00", "direction": "rx", "frame": "aa050dffffff000000000000000000000000005d", "note": "reply", "decoded": "mode colour (0x0D, RGBWW dialect), rgb 255 255 255", "address": "60:74:F4:6A:FB:1E"}
+{"at": "2026-10-23T20:12:57.354+00:00", "direction": "tx", "frame": "aa010000000000000000000000000000000000ab", "note": "heartbeat", "decoded": "read power (heartbeat)", "address": "60:74:F4:6A:FB:1E"}
+{"at": "2026-10-23T20:12:57.454+00:00", "direction": "rx", "frame": "aa010100000000000000000000000000000000aa", "note": "heartbeat", "decoded": "power on", "address": "60:74:F4:6A:FB:1E"}
+{"at": "2026-10-23T20:12:59.365+00:00", "direction": "tx", "frame": "aa010000000000000000000000000000000000ab", "note": "heartbeat", "decoded": "read power (heartbeat)", "address": "60:74:F4:6A:FB:1E"}
+{"at": "2026-10-23T20:12:59.519+00:00", "direction": "rx", "frame": "aa010100000000000000000000000000000000aa", "note": "heartbeat", "decoded": "power on", "address": "60:74:F4:6A:FB:1E"}
+{"at": "2026-10-23T20:13:01.384+00:00", "direction": "tx", "frame": "aa010000000000000000000000000000000000ab", "note": "heartbeat", "decoded": "read power (heartbeat)", "address": "60:74:F4:6A:FB:1E"}
+{"at": "2026-10-23T20:13:01.504+00:00", "direction": "rx", "frame": "aa010100000000000000000000000000000000aa", "note": "heartbeat", "decoded": "power on", "address": "60:74:F4:6A:FB:1E"}

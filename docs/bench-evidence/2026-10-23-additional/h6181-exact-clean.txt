@@ -1,0 +1,62 @@
+profile: Govee RGB TV backlight (0x0D colour scheme); colour sub-mode colour (0x0D, RGBWW dialect), brightness scale 100
+connecting to 60:74:F4:6A:FB:1E ...
+** light disconnected **
+** light disconnected **
+** light disconnected **
+** light disconnected **
+/home/homelab-operator/rig/lib/python3.13/site-packages/bleak/backends/bluezdbus/client.py:646: UserWarning: Using default MTU value. Call _acquire_mtu() or set _mtu_size first to avoid this warning.
+  warnings.warn(
+connected (mtu 23); 2b11 ['read', 'write-without-response'], writing without response
+20:14:15.962 TX 33041e0000000000000000000000000000000029  command     write brightness level 30
+20:14:16.190 RX 3304000000000000000000000000000000000037  ack         ack brightness write: accepted
+20:14:16.288 TX aa040000000000000000000000000000000000ae  query       read brightness
+20:14:16.386 RX aa041e00000000000000000000000000000000b0  reply       brightness level 30
+   => brightness: ECHOED
+20:14:16.394 TX 33050d123456000000000000000000000000004b  command     write colour (0x0D, RGBWW dialect)
+20:14:16.483 RX 3305000000000000000000000000000000000036  ack         ack mode write: accepted
+20:14:16.720 TX aa050100000000000000000000000000000000ae  query       read mode
+20:14:16.826 RX aa050d12345600000000000000000000000000d2  reply       mode colour (0x0D, RGBWW dialect), rgb  18  52  86
+   => rgb: ECHOED
+20:14:16.836 TX 33050dffffff10ccffd5b3000000000000000081  command     write colour (0x0D, RGBWW dialect)
+20:14:16.922 RX 3305000000000000000000000000000000000036  ack         ack mode write: accepted
+20:14:17.158 TX aa050100000000000000000000000000000000ae  query       read mode
+20:14:17.264 RX aa050dffffff10ccffd5b3000000000000000018  reply       mode colour (0x0D, RGBWW dialect), rgb 255 255 255, 4300 K, white
+   => ct: ECHOED (4300 K)
+20:14:17.268 TX 33050dffffff00000000000000000000000000c4  command     write colour (0x0D, RGBWW dialect)
+20:14:17.364 RX 3305000000000000000000000000000000000036  ack         ack mode write: accepted
+20:14:17.596 TX aa050100000000000000000000000000000000ae  query       read mode
+20:14:17.703 RX aa050dffffff000000000000000000000000005d  reply       mode colour (0x0D, RGBWW dialect), rgb 255 255 255
+   => rgb: ECHOED
+20:14:17.708 TX 3304640000000000000000000000000000000053  command     write brightness level 100
+20:14:17.801 RX 3304000000000000000000000000000000000037  ack         ack brightness write: accepted
+20:14:18.038 TX aa040000000000000000000000000000000000ae  query       read brightness
+20:14:18.143 RX aa046400000000000000000000000000000000ca  reply       brightness level 100
+   => brightness: ECHOED
+20:14:18.146 TX 3301010000000000000000000000000000000033  command     write power on
+20:14:18.238 RX 3301000000000000000000000000000000000032  ack         ack power write: accepted
+20:14:18.475 TX aa010000000000000000000000000000000000ab  query       read power (heartbeat)
+20:14:18.631 RX aa010100000000000000000000000000000000aa  reply       power on
+   => power: ECHOED
+20:14:18.636 TX aa060000000000000000000000000000000000ac  query       read version
+20:14:18.727 RX aa06322e30332e3131000000000000000000009d  reply       firmware 2.03.11
+20:14:18.735 TX aa010000000000000000000000000000000000ab  query       read power (heartbeat)
+20:14:18.823 RX aa010100000000000000000000000000000000aa  reply       power on
+20:14:18.826 TX aa040000000000000000000000000000000000ae  query       read brightness
+20:14:19.019 RX aa046400000000000000000000000000000000ca  reply       brightness level 100
+20:14:19.022 TX aa050100000000000000000000000000000000ae  query       read mode
+20:14:19.117 RX aa050dffffff000000000000000000000000005d  reply       mode colour (0x0D, RGBWW dialect), rgb 255 255 255
+20:14:19.982 TX aa010000000000000000000000000000000000ab  heartbeat   read power (heartbeat)
+20:14:20.092 RX aa010100000000000000000000000000000000aa  heartbeat   power on
+20:14:21.998 TX aa010000000000000000000000000000000000ab  heartbeat   read power (heartbeat)
+20:14:22.090 RX aa010100000000000000000000000000000000aa  heartbeat   power on
+20:14:24.014 TX aa010000000000000000000000000000000000ab  heartbeat   read power (heartbeat)
+20:14:24.137 RX aa010100000000000000000000000000000000aa  heartbeat   power on
+** light disconnected **
+
+verify summary:
+  brightness: ECHOED
+  rgb: ECHOED
+  ct: ECHOED (4300 K)
+  rgb: ECHOED
+  brightness: ECHOED
+  power: ECHOED

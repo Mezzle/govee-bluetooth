@@ -1,0 +1,5 @@
+{"entity_id": "switch.bedroom_martin_bedside_sockets", "state": "on", "at": "2026-10-23T20:16:32.770123+00:00"}
+{"service": "turn_off", "entity_id": "switch.bedroom_martin_bedside_sockets", "at": "2026-10-23T20:16:32.917400+00:00"}
+{"entity_id": "switch.bedroom_martin_bedside_sockets", "state": "off", "at": "2026-10-23T20:16:34.961299+00:00"}
+{"service": "turn_on", "entity_id": "switch.bedroom_martin_bedside_sockets", "at": "2026-10-23T20:16:38.114124+00:00"}
+{"entity_id": "switch.bedroom_martin_bedside_sockets", "state": "on", "at": "2026-10-23T20:16:41.169273+00:00"}

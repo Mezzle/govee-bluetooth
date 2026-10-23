@@ -1,0 +1,12 @@
+[
+  {
+    "at": "2026-10-23T20:17:26.196933+00:00",
+    "entity_id": "switch.tv_bias_light",
+    "state": "on"
+  },
+  {
+    "at": "2026-10-23T20:17:26.249612+00:00",
+    "entity_id": "switch.bedroom_martin_bedside_sockets",
+    "state": "on"
+  }
+]

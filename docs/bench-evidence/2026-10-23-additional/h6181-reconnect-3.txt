@@ -1,0 +1,12 @@
+profile: Govee RGB TV backlight (0x0D colour scheme); colour sub-mode colour (0x0D, RGBWW dialect), brightness scale 100
+connecting to 60:74:F4:6A:FB:1E ...
+connected (mtu 23); 2b11 ['read', 'write-without-response'], writing without response
+20:11:31.044 TX aa010000000000000000000000000000000000ab  query       read power (heartbeat)
+20:11:31.125 RX aa010100000000000000000000000000000000aa  reply       power on
+20:11:31.132 TX aa040000000000000000000000000000000000ae  query       read brightness
+20:11:31.270 RX aa046400000000000000000000000000000000ca  reply       brightness level 100
+20:11:31.273 TX aa050100000000000000000000000000000000ae  query       read mode
+20:11:31.365 RX aa050dffffff000000000000000000000000005d  reply       mode colour (0x0D, RGBWW dialect), rgb 255 255 255
+** light disconnected **
+/home/homelab-operator/rig/lib/python3.13/site-packages/bleak/backends/bluezdbus/client.py:646: UserWarning: Using default MTU value. Call _acquire_mtu() or set _mtu_size first to avoid this warning.
+  warnings.warn(
