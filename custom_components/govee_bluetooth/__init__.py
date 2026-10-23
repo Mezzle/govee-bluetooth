@@ -69,6 +69,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: GoveeConfigEntry) -> boo
         idle_disconnect=entry.options.get(CONF_IDLE_DISCONNECT, DEFAULT_IDLE_DISCONNECT),
         on_submode_observed=_remember_submode,
         submode_locked=bool(entry.options.get(CONF_COLOR_SUBMODE)),
+        brightness_scale_locked=bool(entry.options.get(CONF_BRIGHTNESS_SCALE)),
     )
     coordinator = GoveeCoordinator(
         hass, entry, device, entry.options.get(CONF_POLL_INTERVAL, DEFAULT_POLL_INTERVAL)

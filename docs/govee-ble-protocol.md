@@ -5,6 +5,10 @@ Scope: everything the primary sources document about controlling Govee lights ov
 Bluetooth LE, with the colour sub-modes as the deepest section. Every claim carries
 a citation; anything without one is marked unverified.
 
+Rechecked 2026-10-23: see [the current review](protocol-review-2026-10-23.md)
+for updated source links, corrections and remaining limitations. Section 13
+is a historical backlog, not a list of defects still present in the code.
+
 ## Table of contents
 
 1. [Sources and citation keys](#1-sources-and-citation-keys)
@@ -180,7 +184,7 @@ proTypes (`SPEC:657-658`, `SPEC:1338-1343`).
 
 A read request is `AA <cmd> <selector>`: the byte after the command is a
 per-command selector, default empty (`AbsSingleController.f()`, `SPEC:219-228`).
-Source-confirmed selectors: mode `AA 05 01` (required), info `AA 07 02/03/04/10/11`;
+Source-confirmed selectors: mode `AA 05 01` (app-compatible; some firmware ignores the selector), info `AA 07 02/03/04/10/11`;
 power and brightness send `AA 01 00` / `AA 04 00`, and a trailing `01` seen in some
 captures is tolerated (`SPEC:222-228`, `SPEC:1347-1353`). The reply is
 `AA <cmd> <device state...>`, parsed per controller after stripping two header bytes
@@ -232,7 +236,7 @@ space is reused per feature; interpret `(proType, cmd, family)` together (`SPEC:
 | cmd | name | W/R | payload / reply | notes | source |
 |-----|------|-----|-----------------|-------|--------|
 | `0x01` | `SINGLE_SWITCH` / `SINGLE_HEART` | W/R | `33 01 01/00`; reply `AA 01 <state>` | lights: 0 = off else on; plugs: relay bitmask `0x10|bit` (`SwitchControllerV2`) | `SPEC:699-704`, `SPEC:1325-1336`, `KSY:378` |
-| `0x04` | `SINGLE_BRIGHTNESS` | W/R | `33 04 <level>`; reply `AA 04 <level>` | raw byte; 0-255 on Telink strips (H6159 BENCH), 1-100 on H617A/H6181/H6062 (`YAML:556`, BENCH), 20-254 register on H6188 and H6199 pact 1 (`YAML:631`, `HGL:docs/h6199-pact1.md:7-8`), bulblightv3 legacy maps 1-100 -> 20-254 (`YAML:498`). No rescale in the BLE codec (`KSY:382`) | `SPEC:706-710` |
+| `0x04` | `SINGLE_BRIGHTNESS` | W/R | `33 04 <level>`; reply `AA 04 <level>` | raw byte; 0-255 on Telink strips (H6159 BENCH), 1-100 on H617A/H6181/H6062 (`YAML:556`, BENCH), 20-254 register on H6188; app-derived candidate on H6199 pact 1 (`YAML:631`, `HGL:docs/h6199-pact1.md:7-8`), bulblightv3 legacy maps 1-100 -> 20-254 (`YAML:498`). No rescale in the BLE codec (`KSY:382`) | `SPEC:706-710` |
 | `0x05` | `SINGLE_MODE` | W/R | `33 05 <submode> ...`; read `AA 05 01` | section 6 | `SPEC:747-759` |
 | `0x06` | `SINGLE_SOFT_VERSION` | R | `AA 06 00` -> ASCII, e.g. `3.02.24` | `SPEC:726-729`; GENZERO |
 | `0x07` | `SINGLE_DEVICE_INFO` | R | `AA 07 <sel>`: `02` serial 8 B reversed; `03` hw version ASCII (reply `AA 07 03 "1.00.04"`); `04` sw; `07` dsp; `0A/0B` MCU; `10` UID(8, reversed)+sw(3)+hw(3); `11` Wi-Fi MAC(6, forward)+sw+hw | `SPEC:627-637`, `YAML:312`, `HGL:status_reply.ksy:118-127` |
@@ -1152,7 +1156,7 @@ research; 15 onwards from the wider scope.
    both-slot form (tint in bytes 1-3 too, `YAML:497`). Harmless on H6181 but worth
    a per-profile switch if bulbs are added.
 9. **Brightness-scale prior (`REPO:models.py:208-214`)** maps 0x0D/0x15 -> 100.
-   H6188 (0x0D) and H6199 pact 1 (0x0B) use a 20-254 register (`YAML:631`,
+   H6188 (0x0D) uses a 20-254 register; H6199 pact 1 (0x0B) is an app-derived candidate (`YAML:631`,
    `HGL:docs/h6199-pact1.md:7-8`), bulblightv3 legacy scales 1-100 -> 20-254
    (`YAML:498`). 0x0B is not in the mapping at all.
 10. **Sub-mode names (`REPO:probe.py:70-76`, `REPO:protocol.py:27-28`)** know only

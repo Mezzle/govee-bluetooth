@@ -27,7 +27,8 @@ is used by the rest of that generation of strips (see
 - Unknown models are asked which colour command format they speak, with a
   read-only check first and an opt-in active probe behind a consent screen.
 - Diagnostics download with the last known state, Bluetooth reachability and
-  the colour sub-mode from the table, the light and any override.
+  the colour sub-mode from the table, the light and any override, plus the
+  last connection's GATT write properties and selected write procedure.
 
 ## Requirements
 
@@ -188,6 +189,8 @@ encrypted and secret-locked families, `docs/encrypted-protocol-matrix.md`.
 
 All frames are 20 bytes: type, command, payload, zero padding, XOR checksum.
 Writes go to characteristic `…2b11`, replies arrive as notifications on `…2b10`.
+The client uses writes with response when supported, otherwise writes without
+response, for commands, queries and keep-alives alike.
 
 | Action | Frame |
 | --- | --- |
@@ -197,14 +200,14 @@ Writes go to characteristic `…2b11`, replies arrive as notifications on `…2b
 | White (colour temperature) | `33 05 02 FF FF FF 01 R G B` with a kelvin-derived tint |
 | Colour (RGBIC) | `33 05 15 01 R G B 00 00 00 00 00 FF 7F`, the trailing bytes being a whole-strip segment mask |
 | White (RGBIC) | `33 05 15 01 FF FF FF <kelvin hi> <kelvin lo> R G B FF 7F` with a kelvin-derived tint |
-| Scene | `33 05 04 <id>` |
+| Scene | `33 05 04 <id lo> <id hi>` |
 | Keep-alive / power query | `AA 01 00`, answered with `AA 01 <0|1>` |
 | Brightness query | `AA 04 00` |
-| Mode query | `AA 05 01`; an RGBIC reply is `AA 05 15 01 <kelvin hi> <kelvin lo>`, kelvin 0 meaning colour mode |
+| Mode query | `AA 05 01`; an RGBIC reply is `AA 05 15 01 <kelvin hi> <kelvin lo>`, kelvin 0 carrying no confirmed white temperature |
 
-Govee firmware drops a GATT connection that stays silent for about ten
-seconds, so the integration sends the keep-alive every two seconds while a
-connection is open. The reply doubles as a power-state update, which is how a
+The integration sends a keep-alive every two seconds while a connection is
+open. This is a client policy; the sources do not establish a universal
+firmware idle timeout. The reply doubles as a power-state update, which is how a
 change made with the physical remote shows up in Home Assistant between polls.
 
 Sources: the H6127 and H6159 reverse-engineering repositories by

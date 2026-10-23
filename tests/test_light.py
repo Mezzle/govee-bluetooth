@@ -35,6 +35,7 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry, async_
 from custom_components.govee_bluetooth import protocol
 from custom_components.govee_bluetooth.const import (
     CONF_ADDRESS,
+    CONF_BRIGHTNESS_SCALE,
     CONF_COLOR_SUBMODE,
     CONF_DETECTED_SUBMODE,
     CONF_FIRMWARE,
@@ -482,6 +483,24 @@ async def test_manual_submode_override_beats_observation(
     assert "keeping the override" in caplog.text
 
 
+async def test_manual_brightness_scale_survives_dialect_detection(
+    hass: HomeAssistant, bluetooth_ready, fake_client: FakeGoveeClient
+) -> None:
+    fake_client.set_mode(protocol.SUBMODE_COLOR_RGBWW, [1, 2, 3, 0, 0])
+    entry = await setup_entry(hass, options={CONF_IDLE_DISCONNECT: 60, CONF_BRIGHTNESS_SCALE: 255})
+    device = entry.runtime_data.device
+    assert device.profile.color_submode == protocol.SUBMODE_COLOR_RGBWW
+    assert device.profile.brightness_scale == 255
+    assert hass.states.get(ENTITY_ID).attributes[ATTR_BRIGHTNESS] == 128
+    await hass.services.async_call(
+        LIGHT_DOMAIN,
+        SERVICE_TURN_ON,
+        {ATTR_ENTITY_ID: ENTITY_ID, ATTR_BRIGHTNESS: 200},
+        blocking=True,
+    )
+    assert fake_client.commands[-1] == protocol.brightness_frame(200, 255)
+
+
 async def test_diagnostics_show_table_and_observed_submode(
     hass: HomeAssistant, bluetooth_ready, fake_client: FakeGoveeClient
 ) -> None:
@@ -535,3 +554,47 @@ async def test_lights_offering_write_requests_keep_getting_them(
         blocking=True,
     )
     assert fake_client.write_responses and all(fake_client.write_responses)
+
+
+@pytest.mark.parametrize(
+    ("properties", "response"),
+    [
+        (["write-without-response"], False),
+        (["write"], True),
+        (["write", "write-without-response"], True),
+    ],
+)
+async def test_all_operations_use_supported_write_procedure(
+    hass: HomeAssistant, bluetooth_ready, fake_client: FakeGoveeClient, properties, response
+) -> None:
+    from custom_components.govee_bluetooth.diagnostics import async_get_config_entry_diagnostics
+
+    fake_client.control_properties = properties
+    with patch("custom_components.govee_bluetooth.device.HEARTBEAT_INTERVAL", 0.01):
+        entry = await setup_entry(hass)
+        device = entry.runtime_data.device
+        await device.async_turn_on(rgb_color=(10, 20, 30), brightness=80)
+        assert (await device.async_safe_probe()).answered
+        assert (await device.async_active_probe((0x02,))).detected_submode == 0x02
+        async with asyncio.timeout(2):
+            while not any(frame["note"] == "heartbeat" for frame in device.frames):
+                await asyncio.sleep(0.01)
+        assert fake_client.write_responses
+        assert all(actual is response for actual in fake_client.write_responses)
+        diag = await async_get_config_entry_diagnostics(hass, entry)
+        assert diag["transport"] == {"control_properties": properties, "write_response": response}
+        await device.async_disconnect()
+        # A new connection must re-read properties rather than reusing the old method.
+        fake_client.control_properties = ["write"] if not response else ["write-without-response"]
+        await device.async_update()
+        assert fake_client.write_responses[-1] is not response
+
+
+async def test_unwritable_control_disconnects_before_sending(
+    hass: HomeAssistant, bluetooth_ready, fake_client: FakeGoveeClient
+) -> None:
+    fake_client.control_properties = ["read"]
+    entry = await setup_entry(hass)
+    assert not entry.runtime_data.last_update_success
+    assert fake_client.disconnects == 1
+    assert not fake_client.writes

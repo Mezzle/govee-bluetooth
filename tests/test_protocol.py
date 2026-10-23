@@ -92,6 +92,19 @@ def test_scene_frame_matches_capture() -> None:
     assert protocol.scene_frame(0x0F).hex() == "3305040f0000000000000000000000000000003d"
 
 
+def test_scene_codes_use_both_bytes() -> None:
+    # App protocol: 33/AA 05 04 <scene lo> <scene hi>.
+    frame = protocol.scene_frame(0x1234)
+    assert frame[:5] == bytes.fromhex("33 05 04 34 12")
+    assert protocol.verify_frame(frame)
+    reply = protocol.parse_reply(protocol.build_frame(0x05, [0x04, 0x34, 0x12], frame_type=0xAA))
+    assert reply and reply.mode and reply.mode.scene_id == 0x1234
+    assert protocol.scene_frame(0xFFFF)[3:5] == b"\xff\xff"
+    for invalid in (-1, 0x10000):
+        with pytest.raises(ValueError):
+            protocol.scene_frame(invalid)
+
+
 def test_parse_power_reply() -> None:
     reply = protocol.parse_reply(bytes.fromhex("aa010100000000000000000000000000000000aa"))
     assert reply is not None and reply.power is True
@@ -275,3 +288,26 @@ def test_control_write_mode_follows_the_characteristic() -> None:
     # Unknown: keep the old behaviour.
     assert protocol.control_write_response(None) is True
     assert protocol.control_write_response([]) is True
+
+
+def test_real_bench_status_captures() -> None:
+    """Pin decoding to independent hardware replies, not generated fake frames."""
+    import json
+    from pathlib import Path
+
+    captures = json.loads(
+        (Path(__file__).parent / "fixtures" / "bench_status_2026_10_23.json").read_text()
+    )["captures"]
+    for capture in captures:
+        reply = protocol.parse_reply(bytes.fromhex(capture["frame"]))
+        assert reply is not None, capture
+        for field in ("power", "brightness_level", "version"):
+            if field in capture:
+                assert getattr(reply, field) == capture[field], capture
+        if "submode" in capture:
+            assert reply.mode is not None, capture
+            assert reply.mode.submode == capture["submode"], capture
+            if "rgb" in capture:
+                assert reply.mode.rgb == tuple(capture["rgb"]), capture
+            if "kelvin" in capture:
+                assert reply.mode.color_temp_kelvin == capture["kelvin"], capture
