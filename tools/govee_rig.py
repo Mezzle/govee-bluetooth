@@ -93,6 +93,7 @@ def load_integration() -> tuple[Any, Any, Any, Any, Any, Any, Any]:
 
 
 const, protocol, models, probe, census, advertisement, cipher = load_integration()
+exchange = importlib.import_module("custom_components.govee_bluetooth.exchange")
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import blinkt  # noqa: E402  (tools/blinkt.py, next to this script)
@@ -335,8 +336,7 @@ class RigLink:
         self.cipher_version = cipher_version
         self.session: Any = None  # cipher.V1Session once the handshake is done
         self.client: BleakClient | None = None
-        self._pending: dict[int, asyncio.Future[Any]] = {}
-        self._pending_request: dict[int, bytes] = {}
+        self._exchange = exchange.FrameExchange(self._send_frame, QUERY_TIMEOUT)
         self._heartbeat: asyncio.Task[None] | None = None
         self._busy = asyncio.Lock()
         self.unsolicited: list[Any] = []
@@ -369,7 +369,8 @@ class RigLink:
             print(f"warning: could not subscribe to status notifications: {err}")
         control = self.client.services.get_characteristic(const.CONTROL_CHARACTERISTIC_UUID)
         props = list(control.properties) if control is not None else []
-        self.write_response = protocol.control_write_response(props)
+        self._exchange.connected(props)
+        self.write_response = self._exchange.write_response
         print(
             f"connected (mtu {getattr(self.client, 'mtu_size', '?')}); 2b11 {props or 'not found'}, "
             f"writing {'with' if self.write_response else 'without'} response",
@@ -414,6 +415,7 @@ class RigLink:
             self._raw_hook = None
             raise probe.ProbeConnectionLost("E7 01 reply did not decrypt under the PSK")
         self.session = cipher.V1Session(key)
+        self._exchange.encrypted = True
         print("cipher v1: session key negotiated (not logged)")
         ack: asyncio.Future[bytes] = loop.create_future()
         self._raw_hook = lambda data: (not ack.done()) and ack.set_result(data)
@@ -439,6 +441,7 @@ class RigLink:
         return self.session.unwrap(data) if self.session is not None else bytes(data)
 
     async def disconnect(self) -> None:
+        self._exchange.disconnected()
         LIGHTS.set_base(0, (0, 0, 0))
         if self._heartbeat is not None:
             self._heartbeat.cancel()
@@ -456,49 +459,32 @@ class RigLink:
 
     # probe.ProbeLink ---------------------------------------------------
 
-    async def write(self, frame: bytes, note: str = "command") -> None:
+    async def _send_frame(self, frame: bytes, response: bool, note: str) -> None:
         if not self.connected:
-            raise probe.ProbeConnectionLost("link closed")
-        assert self.client is not None
+            raise exchange.ConnectionLost("link closed")
         self.log.record("tx", frame, note)
+        await self.client.write_gatt_char(
+            const.CONTROL_CHARACTERISTIC_UUID, self._wrap(frame), response=response
+        )
+
+    async def write(self, frame: bytes, note: str = "command") -> None:
         try:
-            await self.client.write_gatt_char(
-                const.CONTROL_CHARACTERISTIC_UUID,
-                self._wrap(frame),
-                response=self.write_response and self.session is None,
-            )
+            await self._exchange.write(frame, note)
             await asyncio.sleep(INTER_FRAME_DELAY)
-        except (BleakError, TimeoutError, OSError) as err:
+        except (BleakError, TimeoutError, OSError, exchange.ConnectionLost) as err:
             raise probe.ProbeConnectionLost(str(err)) from err
 
     async def query(self, frame: bytes, command: int, note: str = "query") -> Any:
-        if not self.connected:
-            raise probe.ProbeConnectionLost("link closed")
-        assert self.client is not None
-        loop = asyncio.get_running_loop()
-        future: asyncio.Future[Any] = loop.create_future()
-        self._pending[command] = future
-        self._pending_request[command] = frame
         try:
-            self.log.record("tx", frame, note)
-            await self.client.write_gatt_char(
-                const.CONTROL_CHARACTERISTIC_UUID,
-                self._wrap(frame),
-                response=self.write_response and self.session is None,
-            )
-            return await asyncio.wait_for(future, QUERY_TIMEOUT)
-        except TimeoutError:
+            reply = await self._exchange.query(frame, note)
+        except (BleakError, OSError, exchange.ConnectionLost) as err:
+            raise probe.ProbeConnectionLost(str(err)) from err
+        if reply is None:
             LIGHTS.flash(6, (255, 0, 0), 0.3)
             print(
                 f"            -- no reply to {CMD_NAMES.get(command, hex(command))} query within {QUERY_TIMEOUT}s"
             )
-            return None
-        except (BleakError, OSError) as err:
-            raise probe.ProbeConnectionLost(str(err)) from err
-        finally:
-            if self._pending.get(command) is future:
-                del self._pending[command]
-                self._pending_request.pop(command, None)
+        return reply
 
     # internals ----------------------------------------------------------
 
@@ -507,44 +493,23 @@ class RigLink:
             self._raw_hook(bytes(data))
             return
         frame = self._unwrap(bytes(data))
-        if len(frame) == protocol.FRAME_LENGTH and frame[0] == protocol.TYPE_WRITE:
-            # The firmware's own acknowledgement of a write: 33 <cmd> with byte 2 == 0.
-            self.log.record("rx", frame, "ack" if frame[2] == 0 else "ack_error")
+        note, reply = self._exchange.receive(frame)
+        if note in ("ack", "ack_error"):
             self.ack_log.append((frame[1], frame[2]))
-            if frame[2] == 0:
+            if note == "ack":
                 self.acks += 1
-            return
-        if len(frame) == protocol.FRAME_LENGTH and not protocol.verify_frame(frame):
-            self.log.record("rx", frame, "bad_checksum")
+        elif note == "bad_checksum":
             self.bad_frames += 1
-            return
-        reply = protocol.parse_reply(frame)
-        if reply is None:
-            self.log.record("rx", frame, "unparsed")
-            return
-        future = self._pending.get(reply.command)
-        request = self._pending_request.get(reply.command)
-        if (
-            future is not None
-            and not future.done()
-            and (request is None or protocol.reply_matches(request, frame))
-        ):
-            self.log.record("rx", frame, "reply")
-            future.set_result(reply)
-            return
-        if reply.command == protocol.CMD_POWER and request is None:
-            # The answer to an AA 01 heartbeat: the light's power state, not news.
-            self.log.record("rx", frame, "heartbeat")
-            return
-        self.log.record("rx", frame, "unsolicited")
-        self.unsolicited.append(reply)
+        elif note == "unsolicited" and reply is not None:
+            if reply.command == protocol.CMD_POWER:
+                note = "heartbeat"
+            else:
+                self.unsolicited.append(reply)
+        self.log.record("rx", frame, note)
 
     def _on_disconnected(self, _client: Any) -> None:
         print("** light disconnected **", flush=True)
-        for future in self._pending.values():
-            if not future.done():
-                future.cancel()
-        self._pending.clear()
+        self._exchange.disconnected()
 
     async def _heartbeat_loop(self) -> None:
         assert self.client is not None
@@ -553,14 +518,9 @@ class RigLink:
             if not self.connected or self._busy.locked():
                 continue
             frame = protocol.heartbeat_frame()
-            self.log.record("tx", frame, "heartbeat")
             try:
-                await self.client.write_gatt_char(
-                    const.CONTROL_CHARACTERISTIC_UUID,
-                    self._wrap(frame),
-                    response=self.write_response and self.session is None,
-                )
-            except (BleakError, OSError) as err:
+                await self._exchange.write(frame, "heartbeat")
+            except (BleakError, OSError, exchange.ConnectionLost) as err:
                 print(f"heartbeat failed: {err}")
                 return
 
@@ -965,11 +925,8 @@ async def prompt_keeping_alive(link: RigLink, prompt: str) -> str | None:
             return answer.result()
         if link.connected and link.client is not None:
             frame = protocol.heartbeat_frame()
-            link.log.record("tx", frame, "heartbeat")
-            with contextlib.suppress(BleakError, OSError):
-                await link.client.write_gatt_char(
-                    const.CONTROL_CHARACTERISTIC_UUID, link._wrap(frame), response=False
-                )
+            with contextlib.suppress(BleakError, OSError, exchange.ConnectionLost):
+                await link._exchange.write(frame, "heartbeat")
 
 
 def _read_line(prompt: str) -> str | None:
