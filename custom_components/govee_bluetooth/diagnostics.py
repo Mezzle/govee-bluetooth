@@ -47,6 +47,7 @@ async def async_get_config_entry_diagnostics(
             "in_use": device.profile.color_submode,
         },
         "state": asdict(device.state),
+        "firmware_history": list(device.firmware_history),
         "bluetooth": {
             "seen_by_connectable_adapter": coordinator.available,
             "connectable_scanners": bluetooth.async_scanner_count(hass, connectable=True),

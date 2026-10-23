@@ -1,0 +1,25 @@
+{
+  "host": "homelab-operator@discoball",
+  "remote_source": "/tmp/govee-firmware-inventory-20261023",
+  "source_note": "Working tree copy, including uncommitted OTA inspection changes; CLI version unknown because isolated copy has no .git.",
+  "procedure": "12-second Govee scan, then sequential census --no-scan --model H6159/H6181. No --probe; 9 AA reads per device. No OTA characteristic operations.",
+  "observations": "H6159 initial power query timed out; firmware, hardware, brightness and mode replied. H6181 core reads all replied. Extended capability queries timed out on both.",
+  "sha256": {
+    "tools/govee_rig.py": "45ed7495382769df6216a0ec300b7046812f75a769a62a429be61b1d2802bb1c",
+    "tools/blinkt.py": "a41fda1b89b05fdb2853ed27f474ba0828a818ec5965c04e81cfe378fc98ec9d",
+    "custom_components/govee_bluetooth/__init__.py": "7bde38a91826efca61f03ef4bab06a03fc4f4097e19cfde9b21619e39bd8ce39",
+    "custom_components/govee_bluetooth/advertisement.py": "b24c8cbda1fc89704368c7275eab9a3cdfde98e13aa1b62d4eea72e654b57c19",
+    "custom_components/govee_bluetooth/census.py": "9025e8888e44a98f3d2e17535b71877837e8cfd9083b3d0ed9c950256015507b",
+    "custom_components/govee_bluetooth/cipher.py": "52d2a4ef5289848a00783832386e20a2f65e348238302166e820c6825c1ccc0b",
+    "custom_components/govee_bluetooth/config_flow.py": "4389cada9345587599b14c96ecee6d1e97a2ce69a23e85f7e59fe195062e4e35",
+    "custom_components/govee_bluetooth/const.py": "ccc29567f8bb2ca492300ff93c0b3f1d3d849ccb54dca9aad7d3027d99288ff9",
+    "custom_components/govee_bluetooth/coordinator.py": "c1dd5afe12641f36dca462422749266071b4fb57afaf4c89c92758985e5bd78e",
+    "custom_components/govee_bluetooth/device.py": "d521f218b366e7f8482981ee0c53932b7089c5b949949011bd51fb844768c264",
+    "custom_components/govee_bluetooth/diagnostics.py": "fe4c4fe6f7bc5921479f4bd31e857f5f1e75db4ee3b9ac14282d9798e8c58864",
+    "custom_components/govee_bluetooth/exchange.py": "f36f5ccefffb6a60c2b796df3051a7311a1e064c1ae9bd595e84bffe3ee4645e",
+    "custom_components/govee_bluetooth/light.py": "bf838fededc5bdb6ff3dca26bcaacf130a9a30d2752987942eebc1451e043e06",
+    "custom_components/govee_bluetooth/models.py": "12577f94e7e2c2cbd65a260a7fc028b8df6387a375ee51222b8f0f832c00b989",
+    "custom_components/govee_bluetooth/probe.py": "820816afb8aa46d51f33547d6e7bb108ccaa9d44f1a9182035f986826469e643",
+    "custom_components/govee_bluetooth/protocol.py": "dca758d129a401b5f890cebe500e51a3254c79ec77408cbb5e353d4af4f5457a"
+  }
+}

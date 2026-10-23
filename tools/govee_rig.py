@@ -1254,12 +1254,13 @@ async def cmd_census(args: argparse.Namespace) -> None:
             known_model=settings.model in models.KNOWN_MODELS,
             include_secret=args.keep_secrets,
         )
+        record["ota"] = census.ota_capabilities(link.client.services)
         if link.bgc is not None:
             record["bgc"] = link.bgc.hex()
         record["verdict"] = f"{verdict.family} / {verdict.security} / {verdict.confidence}"
         log.write_line(record)
     print("\ncensus result:")
-    for key in ("firmware", "hardware", "power", "brightness", "submode", "submode_name", "ic_count", "segments",
+    for key in ("firmware", "hardware", "ota", "power", "brightness", "submode", "submode_name", "ic_count", "segments",
                 "light_count", "secret_present", "segment_page", "reads", "replies", "acks", "bad_frames",
                 "echoed", "probe_acks", "observed", "restored", "restore_note", "error"):  # fmt: skip
         if key in record:

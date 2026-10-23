@@ -118,6 +118,8 @@ class GoveeBleDevice:
         self._in_flight: asyncio.Task[Any] | None = None
         self._client: BleakClientWithServiceCache | None = None
         self._expected_disconnect = False
+        self._firmware_checked = False
+        self.firmware_history: deque[dict[str, str]] = deque(maxlen=10)
         self.control_properties: tuple[str, ...] = ()
         self.write_response: bool | None = None
         self._heartbeat_task: asyncio.Task[None] | None = None
@@ -224,7 +226,7 @@ class GoveeBleDevice:
                 brightness = await self._exchange.query(protocol.brightness_query_frame())
                 mode = await self._exchange.query(protocol.mode_query_frame())
                 firmware = None
-                if self.state.firmware is None:
+                if not self._firmware_checked:
                     firmware = await self._exchange.query(protocol.version_query_frame())
             except (BleakError, OSError, ConnectionLost) as err:
                 await self._async_disconnect_locked()
@@ -238,6 +240,21 @@ class GoveeBleDevice:
         changes: dict[str, Any] = {}
         if firmware is not None and firmware.version:
             changes["firmware"] = firmware.version
+            self._firmware_checked = True
+            if self.state.firmware and self.state.firmware != firmware.version:
+                self.firmware_history.append(
+                    {
+                        "at": datetime.now(UTC).isoformat(timespec="seconds"),
+                        "previous": self.state.firmware,
+                        "current": firmware.version,
+                    }
+                )
+                _LOGGER.info(
+                    "%s firmware changed from %s to %s",
+                    self.name,
+                    self.state.firmware,
+                    firmware.version,
+                )
         if mode is not None and mode.mode is not None:
             self._apply_observed_submode(mode.mode.submode, changes.get("firmware"))
         if power is not None and power.power is not None:
@@ -415,6 +432,7 @@ class GoveeBleDevice:
             _LOGGER.debug("Could not subscribe to %s notifications: %s", self.name, err)
 
         self._client = client
+        self._firmware_checked = False
         self._expected_disconnect = False
         self._touch()
         self._heartbeat_task = self._hass.async_create_background_task(

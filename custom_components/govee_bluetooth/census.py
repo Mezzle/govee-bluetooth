@@ -14,7 +14,7 @@ the observations that support it, and the report generator renders that.
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Iterable
 from dataclasses import dataclass, field
 
 from . import protocol
@@ -125,6 +125,49 @@ class CensusResult:
     @property
     def silent(self) -> bool:
         return self.connected and self.subscribed and self.replies == 0 and not self.aborted
+
+
+def ota_capabilities(services: Iterable[object]) -> dict[str, object]:
+    """Inspect discovered GATT metadata only; never enter OTA or read/write its chars.
+
+    The V1 data UUID is also used for BGC-info under the control service:
+    only characteristics belonging to the OTA service count as evidence.
+    Absence in normal mode does not prove the device lacks an OTA bootloader.
+    """
+    layouts = {
+        "govee_v1": (
+            "00010203-0405-0607-0809-0a0b0c0d1912",
+            ("00010203-0405-0607-0809-0a0b0c0d2b12",),
+        ),
+        "ti_oad_v2": (
+            "f000ffc0-0451-4000-b000-000000000000",
+            ("f000ffc1-0451-4000-b000-000000000000", "f000ffc2-0451-4000-b000-000000000000"),
+        ),
+    }
+    found = []
+    for service in services:
+        service_uuid = str(service.uuid).lower()
+        for transport, (expected_service, expected_chars) in layouts.items():
+            if service_uuid != expected_service:
+                continue
+            chars = [
+                {"uuid": str(char.uuid).lower(), "properties": sorted(char.properties)}
+                for char in service.characteristics
+                if str(char.uuid).lower() in expected_chars
+            ]
+            found.append(
+                {
+                    "transport": transport,
+                    "service": service_uuid,
+                    "characteristics": chars,
+                    "complete": set(expected_chars) <= {char["uuid"] for char in chars},
+                }
+            )
+    return {
+        "status": "services_detected" if found else "not_observed",
+        "transports": found,
+        "update_verified": False,
+    }
 
 
 async def async_census(

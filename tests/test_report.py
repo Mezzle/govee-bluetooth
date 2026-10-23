@@ -201,3 +201,32 @@ def test_scale_test_conclusion_is_the_brightness_basis(report) -> None:
         "level": "observed",
         "basis": "scale 0-100: 255 looked DIMMER than 100",
     }
+
+
+def test_report_preserves_ota_evidence(report):
+    evidence = report.Evidence()
+    ota = {
+        "status": "not_observed",
+        "transports": [],
+        "update_verified": False,
+    }
+    report.ingest_records(
+        evidence,
+        [
+            {
+                "summary": "light",
+                "schema": "govee-evidence/1",
+                "source": "pi",
+                "address": "AA:BB:CC:DD:EE:FF",
+                "model": "H6159",
+                "firmware": "1.07.02",
+                "hardware": "1.00.00",
+                "ota": ota,
+            }
+        ],
+        source="pi",
+        label="test",
+    )
+    doc = report.analyse(evidence)
+    assert doc["devices"][0]["ota"] == ota
+    assert "not_observed" in report.render_markdown(doc)
