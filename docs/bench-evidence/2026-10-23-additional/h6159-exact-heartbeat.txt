@@ -1,0 +1,30 @@
+profile: Govee RGB strip (H6159 family); colour sub-mode colour (0x02, H6159 dialect), brightness scale 255
+connecting to A4:C1:38:9C:8E:17 ...
+connected (mtu 23); 2b11 ['read', 'write-without-response'], writing without response
+/home/homelab-operator/rig/lib/python3.13/site-packages/bleak/backends/bluezdbus/client.py:646: UserWarning: Using default MTU value. Call _acquire_mtu() or set _mtu_size first to avoid this warning.
+  warnings.warn(
+2b12 (BGC info): 00 -> encryptVersion 0 (both candidate bytes zero (plaintext))
+20:13:27.123 TX aa060000000000000000000000000000000000ac  query       read version
+            -- no reply to version query within 2.5s
+20:13:29.644 TX aa010000000000000000000000000000000000ab  query       read power (heartbeat)
+20:13:29.740 RX aa010100000000000000000000000000000000aa  reply       power on
+20:13:29.743 TX aa040000000000000000000000000000000000ae  query       read brightness
+20:13:29.814 RX aa041a00000000000000000000000000000000b4  reply       brightness level 26
+20:13:29.816 TX aa050100000000000000000000000000000000ae  query       read mode
+20:13:29.927 RX aa0502d6e2ff0000000000000000000000000066  reply       mode colour (0x02, H6159 dialect), rgb 214 226 255
+
+safe probe result:
+  firmware   : None
+  power      : True
+  brightness : 26 (raw device byte)
+  mode       : colour (0x02, H6159 dialect), rgb 214 226 255
+  outcome    : color
+  detected   : colour (0x02, H6159 dialect)
+holding the connection 6.0s to watch for unsolicited frames ...
+20:13:31.135 TX aa010000000000000000000000000000000000ab  heartbeat   read power (heartbeat)
+20:13:31.202 RX aa010100000000000000000000000000000000aa  heartbeat   power on
+20:13:33.149 TX aa010000000000000000000000000000000000ab  heartbeat   read power (heartbeat)
+20:13:33.227 RX aa010100000000000000000000000000000000aa  heartbeat   power on
+20:13:35.164 TX aa010000000000000000000000000000000000ab  heartbeat   read power (heartbeat)
+20:13:35.253 RX aa010100000000000000000000000000000000aa  heartbeat   power on
+** light disconnected **

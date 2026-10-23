@@ -1,0 +1,2 @@
+{"summary": "advertisement", "schema": "govee-evidence/1", "source": "pi", "at": "2026-10-23T20:12:29.651+00:00", "address": "A4:C1:38:9C:8E:17", "name": "ihoment_H6159_8E17", "model": "H6159", "known_model": true, "pact": "1/1", "flags": 1, "encrypted": false, "rssi": -48}
+{"summary": "advertisement", "schema": "govee-evidence/1", "source": "pi", "at": "2026-10-23T20:12:29.654+00:00", "address": "60:74:F4:6A:FB:1E", "name": "GBK_H6181_FB1E", "model": "H6181", "known_model": true, "pact": "10/1", "flags": 2, "encrypted": false, "rssi": -127}

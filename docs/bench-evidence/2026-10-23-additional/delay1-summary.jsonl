@@ -1,0 +1,3 @@
+{"model": "H6159", "trial": 1, "elapsed_s": 18.668, "exit_code": 0, "reads_passed": true, "disconnect_callbacks_before_connected": 1}
+{"model": "H6159", "trial": 2, "elapsed_s": 11.723, "exit_code": 0, "reads_passed": true, "disconnect_callbacks_before_connected": 0}
+{"model": "H6159", "trial": 3, "elapsed_s": 11.032, "exit_code": 0, "reads_passed": true, "disconnect_callbacks_before_connected": 0}

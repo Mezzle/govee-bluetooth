@@ -1,0 +1,208 @@
+{
+  "description": "Observed real plaintext replies and write ACKs; wire readback only, no photometry",
+  "cases": [
+    {
+      "model": "H6159",
+      "frame": "aa010100000000000000000000000000000000aa",
+      "observed": "power on",
+      "source": "additional-h6159.jsonl",
+      "at": "2026-10-23T20:07:47.585+00:00"
+    },
+    {
+      "model": "H6159",
+      "frame": "aa041a00000000000000000000000000000000b4",
+      "observed": "brightness level 26",
+      "source": "additional-h6159.jsonl",
+      "at": "2026-10-23T20:07:47.683+00:00"
+    },
+    {
+      "model": "H6159",
+      "frame": "aa0502d6e2ff0000000000000000000000000066",
+      "observed": "mode colour (0x02, H6159 dialect), rgb 214 226 255",
+      "source": "additional-h6159.jsonl",
+      "at": "2026-10-23T20:07:47.785+00:00"
+    },
+    {
+      "model": "H6159",
+      "frame": "aa040a00000000000000000000000000000000a4",
+      "observed": "brightness level 10",
+      "source": "additional-h6159.jsonl",
+      "at": "2026-10-23T20:08:52.753+00:00"
+    },
+    {
+      "model": "H6159",
+      "frame": "3304000000000000000000000000000000000037",
+      "observed": "ack brightness write: accepted",
+      "source": "additional-h6159.jsonl",
+      "at": "2026-10-23T20:08:52.851+00:00"
+    },
+    {
+      "model": "H6159",
+      "frame": "aa0432000000000000000000000000000000009c",
+      "observed": "brightness level 50",
+      "source": "additional-h6159.jsonl",
+      "at": "2026-10-23T20:08:53.192+00:00"
+    },
+    {
+      "model": "H6159",
+      "frame": "aa046400000000000000000000000000000000ca",
+      "observed": "brightness level 100",
+      "source": "additional-h6159.jsonl",
+      "at": "2026-10-23T20:08:53.693+00:00"
+    },
+    {
+      "model": "H6159",
+      "frame": "3305000000000000000000000000000000000036",
+      "observed": "ack mode write: accepted",
+      "source": "additional-h6159.jsonl",
+      "at": "2026-10-23T20:08:53.824+00:00"
+    },
+    {
+      "model": "H6159",
+      "frame": "aa050212345600000000000000000000000000dd",
+      "observed": "mode colour (0x02, H6159 dialect), rgb  18  52  86",
+      "source": "additional-h6159.jsonl",
+      "at": "2026-10-23T20:08:54.215+00:00"
+    },
+    {
+      "model": "H6159",
+      "frame": "aa0502ffffff01ffd5b3000000000000000000ca",
+      "observed": "mode colour (0x02, H6159 dialect), rgb 255 255 255, white",
+      "source": "additional-h6159.jsonl",
+      "at": "2026-10-23T20:08:54.663+00:00"
+    },
+    {
+      "model": "H6159",
+      "frame": "3301000000000000000000000000000000000032",
+      "observed": "ack power write: accepted",
+      "source": "additional-h6159.jsonl",
+      "at": "2026-10-23T20:08:55.641+00:00"
+    },
+    {
+      "model": "H6159",
+      "frame": "aa06312e30372e30320000000000000000000098",
+      "observed": "firmware 1.07.02",
+      "source": "additional-h6159.jsonl",
+      "at": "2026-10-23T20:08:56.121+00:00"
+    },
+    {
+      "model": "H6159",
+      "frame": "aa0480000000000000000000000000000000002e",
+      "observed": "brightness level 128",
+      "source": "additional-h6159.jsonl",
+      "at": "2026-10-23T20:09:15.974+00:00"
+    },
+    {
+      "model": "H6159",
+      "frame": "aa04ff0000000000000000000000000000000051",
+      "observed": "brightness level 255",
+      "source": "additional-h6159.jsonl",
+      "at": "2026-10-23T20:09:16.386+00:00"
+    },
+    {
+      "model": "H6159",
+      "frame": "aa0502ffffff01ffa7570000000000000000005c",
+      "observed": "mode colour (0x02, H6159 dialect), rgb 255 255 255, white",
+      "source": "additional-h6159.jsonl",
+      "at": "2026-10-23T20:09:17.212+00:00"
+    },
+    {
+      "model": "H6159",
+      "frame": "aa0502ffffff01fffefa000000000000000000a8",
+      "observed": "mode colour (0x02, H6159 dialect), rgb 255 255 255, white",
+      "source": "additional-h6159.jsonl",
+      "at": "2026-10-23T20:09:17.625+00:00"
+    },
+    {
+      "model": "H6181",
+      "frame": "aa06322e30332e3131000000000000000000009d",
+      "observed": "firmware 2.03.11",
+      "source": "additional-h6181.jsonl",
+      "at": "2026-10-23T20:08:06.613+00:00"
+    },
+    {
+      "model": "H6181",
+      "frame": "aa010100000000000000000000000000000000aa",
+      "observed": "power on",
+      "source": "additional-h6181.jsonl",
+      "at": "2026-10-23T20:08:06.708+00:00"
+    },
+    {
+      "model": "H6181",
+      "frame": "aa046400000000000000000000000000000000ca",
+      "observed": "brightness level 100",
+      "source": "additional-h6181.jsonl",
+      "at": "2026-10-23T20:08:06.855+00:00"
+    },
+    {
+      "model": "H6181",
+      "frame": "aa050dffffff000000000000000000000000005d",
+      "observed": "mode colour (0x0D, RGBWW dialect), rgb 255 255 255",
+      "source": "additional-h6181.jsonl",
+      "at": "2026-10-23T20:08:06.954+00:00"
+    },
+    {
+      "model": "H6181",
+      "frame": "3304000000000000000000000000000000000037",
+      "observed": "ack brightness write: accepted",
+      "source": "additional-h6181.jsonl",
+      "at": "2026-10-23T20:09:07.283+00:00"
+    },
+    {
+      "model": "H6181",
+      "frame": "aa040a00000000000000000000000000000000a4",
+      "observed": "brightness level 10",
+      "source": "additional-h6181.jsonl",
+      "at": "2026-10-23T20:09:07.624+00:00"
+    },
+    {
+      "model": "H6181",
+      "frame": "aa0432000000000000000000000000000000009c",
+      "observed": "brightness level 50",
+      "source": "additional-h6181.jsonl",
+      "at": "2026-10-23T20:09:08.065+00:00"
+    },
+    {
+      "model": "H6181",
+      "frame": "3305000000000000000000000000000000000036",
+      "observed": "ack mode write: accepted",
+      "source": "additional-h6181.jsonl",
+      "at": "2026-10-23T20:09:08.746+00:00"
+    },
+    {
+      "model": "H6181",
+      "frame": "aa050d12345600000000000000000000000000d2",
+      "observed": "mode colour (0x0D, RGBWW dialect), rgb  18  52  86",
+      "source": "additional-h6181.jsonl",
+      "at": "2026-10-23T20:09:08.993+00:00"
+    },
+    {
+      "model": "H6181",
+      "frame": "aa050dffffff10ccffd5b3000000000000000018",
+      "observed": "mode colour (0x0D, RGBWW dialect), rgb 255 255 255, 4300 K, white",
+      "source": "additional-h6181.jsonl",
+      "at": "2026-10-23T20:09:09.432+00:00"
+    },
+    {
+      "model": "H6181",
+      "frame": "aa050dffffff0a8cffa7570000000000000000d4",
+      "observed": "mode colour (0x0D, RGBWW dialect), rgb 255 255 255, 2700 K, white",
+      "source": "additional-h6181.jsonl",
+      "at": "2026-10-23T20:09:09.876+00:00"
+    },
+    {
+      "model": "H6181",
+      "frame": "aa050dffffff1964fffefa0000000000000000db",
+      "observed": "mode colour (0x0D, RGBWW dialect), rgb 255 255 255, 6500 K, white",
+      "source": "additional-h6181.jsonl",
+      "at": "2026-10-23T20:09:10.308+00:00"
+    },
+    {
+      "model": "H6181",
+      "frame": "3301000000000000000000000000000000000032",
+      "observed": "ack power write: accepted",
+      "source": "additional-h6181.jsonl",
+      "at": "2026-10-23T20:09:11.285+00:00"
+    }
+  ]
+}

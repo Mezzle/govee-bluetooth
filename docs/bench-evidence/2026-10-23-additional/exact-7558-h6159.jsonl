@@ -1,0 +1,42 @@
+{"at": "2026-10-23T20:11:40.790+00:00", "direction": "tx", "frame": "aa010000000000000000000000000000000000ab", "note": "query", "decoded": "read power (heartbeat)", "address": "A4:C1:38:9C:8E:17"}
+{"at": "2026-10-23T20:11:40.868+00:00", "direction": "rx", "frame": "aa010100000000000000000000000000000000aa", "note": "reply", "decoded": "power on", "address": "A4:C1:38:9C:8E:17"}
+{"at": "2026-10-23T20:11:40.874+00:00", "direction": "tx", "frame": "aa040000000000000000000000000000000000ae", "note": "query", "decoded": "read brightness", "address": "A4:C1:38:9C:8E:17"}
+{"at": "2026-10-23T20:11:40.942+00:00", "direction": "rx", "frame": "aa041a00000000000000000000000000000000b4", "note": "reply", "decoded": "brightness level 26", "address": "A4:C1:38:9C:8E:17"}
+{"at": "2026-10-23T20:11:40.945+00:00", "direction": "tx", "frame": "aa050100000000000000000000000000000000ae", "note": "query", "decoded": "read mode", "address": "A4:C1:38:9C:8E:17"}
+{"at": "2026-10-23T20:11:41.017+00:00", "direction": "rx", "frame": "aa0502d6e2ff0000000000000000000000000066", "note": "reply", "decoded": "mode colour (0x02, H6159 dialect), rgb 214 226 255", "address": "A4:C1:38:9C:8E:17"}
+{"at": "2026-10-23T20:11:41.025+00:00", "direction": "tx", "frame": "33041a000000000000000000000000000000002d", "note": "command", "decoded": "write brightness level 26", "address": "A4:C1:38:9C:8E:17"}
+{"at": "2026-10-23T20:11:41.092+00:00", "direction": "rx", "frame": "3304000000000000000000000000000000000037", "note": "ack", "decoded": "ack brightness write: accepted", "address": "A4:C1:38:9C:8E:17"}
+{"at": "2026-10-23T20:11:41.351+00:00", "direction": "tx", "frame": "aa040000000000000000000000000000000000ae", "note": "query", "decoded": "read brightness", "address": "A4:C1:38:9C:8E:17"}
+{"at": "2026-10-23T20:11:41.430+00:00", "direction": "rx", "frame": "aa041a00000000000000000000000000000000b4", "note": "reply", "decoded": "brightness level 26", "address": "A4:C1:38:9C:8E:17"}
+{"summary": "verify", "schema": "govee-evidence/1", "source": "pi", "at": "2026-10-23T20:11:41.432+00:00", "address": "A4:C1:38:9C:8E:17", "action": "brightness", "args": [26], "echoed": true, "verdict": "brightness: ECHOED"}
+{"at": "2026-10-23T20:11:41.434+00:00", "direction": "tx", "frame": "330502d6e2ff00000000000000000000000000ff", "note": "command", "decoded": "write colour (0x02, H6159 dialect)", "address": "A4:C1:38:9C:8E:17"}
+{"at": "2026-10-23T20:11:41.504+00:00", "direction": "rx", "frame": "3305000000000000000000000000000000000036", "note": "ack", "decoded": "ack mode write: accepted", "address": "A4:C1:38:9C:8E:17"}
+{"at": "2026-10-23T20:11:41.766+00:00", "direction": "tx", "frame": "aa050100000000000000000000000000000000ae", "note": "query", "decoded": "read mode", "address": "A4:C1:38:9C:8E:17"}
+{"at": "2026-10-23T20:11:41.844+00:00", "direction": "rx", "frame": "aa0502d6e2ff0000000000000000000000000066", "note": "reply", "decoded": "mode colour (0x02, H6159 dialect), rgb 214 226 255", "address": "A4:C1:38:9C:8E:17"}
+{"summary": "verify", "schema": "govee-evidence/1", "source": "pi", "at": "2026-10-23T20:11:41.846+00:00", "address": "A4:C1:38:9C:8E:17", "action": "rgb", "args": [2, [214, 226, 255]], "echoed": true, "verdict": "rgb: ECHOED"}
+{"at": "2026-10-23T20:11:41.852+00:00", "direction": "tx", "frame": "3301010000000000000000000000000000000033", "note": "command", "decoded": "write power on", "address": "A4:C1:38:9C:8E:17"}
+{"at": "2026-10-23T20:11:41.916+00:00", "direction": "rx", "frame": "3301000000000000000000000000000000000032", "note": "ack", "decoded": "ack power write: accepted", "address": "A4:C1:38:9C:8E:17"}
+{"at": "2026-10-23T20:11:42.177+00:00", "direction": "tx", "frame": "aa010000000000000000000000000000000000ab", "note": "query", "decoded": "read power (heartbeat)", "address": "A4:C1:38:9C:8E:17"}
+{"at": "2026-10-23T20:11:42.294+00:00", "direction": "rx", "frame": "aa010100000000000000000000000000000000aa", "note": "reply", "decoded": "power on", "address": "A4:C1:38:9C:8E:17"}
+{"summary": "verify", "schema": "govee-evidence/1", "source": "pi", "at": "2026-10-23T20:11:42.296+00:00", "address": "A4:C1:38:9C:8E:17", "action": "power", "args": [true], "echoed": true, "verdict": "power: ECHOED"}
+{"at": "2026-10-23T20:11:47.307+00:00", "direction": "tx", "frame": "aa060000000000000000000000000000000000ac", "note": "query", "decoded": "read version", "address": "A4:C1:38:9C:8E:17"}
+{"at": "2026-10-23T20:11:47.393+00:00", "direction": "rx", "frame": "aa06312e30372e30320000000000000000000098", "note": "reply", "decoded": "firmware 1.07.02", "address": "A4:C1:38:9C:8E:17"}
+{"at": "2026-10-23T20:11:47.396+00:00", "direction": "tx", "frame": "aa010000000000000000000000000000000000ab", "note": "query", "decoded": "read power (heartbeat)", "address": "A4:C1:38:9C:8E:17"}
+{"at": "2026-10-23T20:11:47.467+00:00", "direction": "rx", "frame": "aa010100000000000000000000000000000000aa", "note": "reply", "decoded": "power on", "address": "A4:C1:38:9C:8E:17"}
+{"at": "2026-10-23T20:11:47.473+00:00", "direction": "tx", "frame": "aa040000000000000000000000000000000000ae", "note": "query", "decoded": "read brightness", "address": "A4:C1:38:9C:8E:17"}
+{"at": "2026-10-23T20:11:47.541+00:00", "direction": "rx", "frame": "aa041a00000000000000000000000000000000b4", "note": "reply", "decoded": "brightness level 26", "address": "A4:C1:38:9C:8E:17"}
+{"at": "2026-10-23T20:11:47.543+00:00", "direction": "tx", "frame": "aa050100000000000000000000000000000000ae", "note": "query", "decoded": "read mode", "address": "A4:C1:38:9C:8E:17"}
+{"at": "2026-10-23T20:11:47.616+00:00", "direction": "rx", "frame": "aa0502d6e2ff0000000000000000000000000066", "note": "reply", "decoded": "mode colour (0x02, H6159 dialect), rgb 214 226 255", "address": "A4:C1:38:9C:8E:17"}
+{"at": "2026-10-23T20:13:27.123+00:00", "direction": "tx", "frame": "aa060000000000000000000000000000000000ac", "note": "query", "decoded": "read version", "address": "A4:C1:38:9C:8E:17"}
+{"at": "2026-10-23T20:13:29.644+00:00", "direction": "tx", "frame": "aa010000000000000000000000000000000000ab", "note": "query", "decoded": "read power (heartbeat)", "address": "A4:C1:38:9C:8E:17"}
+{"at": "2026-10-23T20:13:29.740+00:00", "direction": "rx", "frame": "aa010100000000000000000000000000000000aa", "note": "reply", "decoded": "power on", "address": "A4:C1:38:9C:8E:17"}
+{"at": "2026-10-23T20:13:29.743+00:00", "direction": "tx", "frame": "aa040000000000000000000000000000000000ae", "note": "query", "decoded": "read brightness", "address": "A4:C1:38:9C:8E:17"}
+{"at": "2026-10-23T20:13:29.814+00:00", "direction": "rx", "frame": "aa041a00000000000000000000000000000000b4", "note": "reply", "decoded": "brightness level 26", "address": "A4:C1:38:9C:8E:17"}
+{"at": "2026-10-23T20:13:29.816+00:00", "direction": "tx", "frame": "aa050100000000000000000000000000000000ae", "note": "query", "decoded": "read mode", "address": "A4:C1:38:9C:8E:17"}
+{"at": "2026-10-23T20:13:29.927+00:00", "direction": "rx", "frame": "aa0502d6e2ff0000000000000000000000000066", "note": "reply", "decoded": "mode colour (0x02, H6159 dialect), rgb 214 226 255", "address": "A4:C1:38:9C:8E:17"}
+{"at": "2026-10-23T20:13:31.135+00:00", "direction": "tx", "frame": "aa010000000000000000000000000000000000ab", "note": "heartbeat", "decoded": "read power (heartbeat)", "address": "A4:C1:38:9C:8E:17"}
+{"at": "2026-10-23T20:13:31.202+00:00", "direction": "rx", "frame": "aa010100000000000000000000000000000000aa", "note": "heartbeat", "decoded": "power on", "address": "A4:C1:38:9C:8E:17"}
+{"at": "2026-10-23T20:13:33.149+00:00", "direction": "tx", "frame": "aa010000000000000000000000000000000000ab", "note": "heartbeat", "decoded": "read power (heartbeat)", "address": "A4:C1:38:9C:8E:17"}
+{"at": "2026-10-23T20:13:33.227+00:00", "direction": "rx", "frame": "aa010100000000000000000000000000000000aa", "note": "heartbeat", "decoded": "power on", "address": "A4:C1:38:9C:8E:17"}
+{"at": "2026-10-23T20:13:35.164+00:00", "direction": "tx", "frame": "aa010000000000000000000000000000000000ab", "note": "heartbeat", "decoded": "read power (heartbeat)", "address": "A4:C1:38:9C:8E:17"}
+{"at": "2026-10-23T20:13:35.253+00:00", "direction": "rx", "frame": "aa010100000000000000000000000000000000aa", "note": "heartbeat", "decoded": "power on", "address": "A4:C1:38:9C:8E:17"}

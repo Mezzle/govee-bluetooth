@@ -1,0 +1,33 @@
+profile: Govee RGB TV backlight (0x0D colour scheme); colour sub-mode colour (0x0D, RGBWW dialect), brightness scale 100
+connecting to 60:74:F4:6A:FB:1E ...
+** light disconnected **
+** light disconnected **
+** light disconnected **
+** light disconnected **
+/home/homelab-operator/rig/lib/python3.13/site-packages/bleak/backends/bluezdbus/client.py:646: UserWarning: Using default MTU value. Call _acquire_mtu() or set _mtu_size first to avoid this warning.
+  warnings.warn(
+connected (mtu 23); 2b11 ['read', 'write-without-response'], writing without response
+20:12:55.338 TX aa060000000000000000000000000000000000ac  query       read version
+20:12:55.435 RX aa06322e30332e3131000000000000000000009d  reply       firmware 2.03.11
+20:12:55.438 TX aa010000000000000000000000000000000000ab  query       read power (heartbeat)
+20:12:55.508 RX aa010100000000000000000000000000000000aa  reply       power on
+20:12:55.512 TX aa040000000000000000000000000000000000ae  query       read brightness
+20:12:55.583 RX aa046400000000000000000000000000000000ca  reply       brightness level 100
+20:12:55.585 TX aa050100000000000000000000000000000000ae  query       read mode
+20:12:55.660 RX aa050dffffff000000000000000000000000005d  reply       mode colour (0x0D, RGBWW dialect), rgb 255 255 255
+
+safe probe result:
+  firmware   : 2.03.11
+  power      : True
+  brightness : 100 (raw device byte)
+  mode       : colour (0x0D, RGBWW dialect), rgb 255 255 255
+  outcome    : color
+  detected   : colour (0x0D, RGBWW dialect)
+holding the connection 6.0s to watch for unsolicited frames ...
+20:12:57.354 TX aa010000000000000000000000000000000000ab  heartbeat   read power (heartbeat)
+20:12:57.454 RX aa010100000000000000000000000000000000aa  heartbeat   power on
+20:12:59.365 TX aa010000000000000000000000000000000000ab  heartbeat   read power (heartbeat)
+20:12:59.519 RX aa010100000000000000000000000000000000aa  heartbeat   power on
+20:13:01.384 TX aa010000000000000000000000000000000000ab  heartbeat   read power (heartbeat)
+20:13:01.504 RX aa010100000000000000000000000000000000aa  heartbeat   power on
+** light disconnected **

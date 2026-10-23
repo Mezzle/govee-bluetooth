@@ -1,0 +1,58 @@
+profile: Govee RGB strip (H6159 family); colour sub-mode colour (0x02, H6159 dialect), brightness scale 255
+connecting to A4:C1:38:9C:8E:17 ...
+connected (mtu 23); 2b11 ['read', 'write-without-response'], writing without response
+/home/homelab-operator/rig/lib/python3.13/site-packages/bleak/backends/bluezdbus/client.py:646: UserWarning: Using default MTU value. Call _acquire_mtu() or set _mtu_size first to avoid this warning.
+  warnings.warn(
+2b12 (BGC info): 00 -> encryptVersion 0 (both candidate bytes zero (plaintext))
+20:09:15.580 TX 33048000000000000000000000000000000000b7  command     write brightness level 128
+20:09:15.904 TX aa040000000000000000000000000000000000ae  query       read brightness
+20:09:15.974 RX aa0480000000000000000000000000000000002e  reply       brightness level 128
+   => brightness: ECHOED
+20:09:15.984 TX 3304ff00000000000000000000000000000000c8  command     write brightness level 255
+20:09:16.048 RX 3304000000000000000000000000000000000037  ack         ack brightness write: accepted
+20:09:16.310 TX aa040000000000000000000000000000000000ae  query       read brightness
+20:09:16.386 RX aa04ff0000000000000000000000000000000051  reply       brightness level 255
+   => brightness: ECHOED
+20:09:16.396 TX 33041a000000000000000000000000000000002d  command     write brightness level 26
+20:09:16.462 RX 3304000000000000000000000000000000000037  ack         ack brightness write: accepted
+20:09:16.724 TX aa040000000000000000000000000000000000ae  query       read brightness
+20:09:16.799 RX aa041a00000000000000000000000000000000b4  reply       brightness level 26
+   => brightness: ECHOED
+20:09:16.803 TX 330502ffffff01ffa757000000000000000000c5  command     write colour (0x02, H6159 dialect)
+20:09:16.873 RX 3305000000000000000000000000000000000036  ack         ack mode write: accepted
+20:09:17.135 TX aa050100000000000000000000000000000000ae  query       read mode
+20:09:17.212 RX aa0502ffffff01ffa7570000000000000000005c  reply       mode colour (0x02, H6159 dialect), rgb 255 255 255, white
+   => ct: ECHOED (white flag + tint (255, 167, 87))
+20:09:17.216 TX 330502ffffff01fffefa00000000000000000031  command     write colour (0x02, H6159 dialect)
+20:09:17.285 RX 3305000000000000000000000000000000000036  ack         ack mode write: accepted
+20:09:17.546 TX aa050100000000000000000000000000000000ae  query       read mode
+20:09:17.625 RX aa0502ffffff01fffefa000000000000000000a8  reply       mode colour (0x02, H6159 dialect), rgb 255 255 255, white
+   => ct: ECHOED (white flag + tint (255, 254, 250))
+20:09:17.634 TX 330502d6e2ff00000000000000000000000000ff  command     write colour (0x02, H6159 dialect)
+20:09:17.742 RX 3305000000000000000000000000000000000036  ack         ack mode write: accepted
+20:09:17.963 TX aa050100000000000000000000000000000000ae  query       read mode
+20:09:18.044 RX aa0502d6e2ff0000000000000000000000000066  reply       mode colour (0x02, H6159 dialect), rgb 214 226 255
+   => rgb: ECHOED
+20:09:18.047 TX 3301010000000000000000000000000000000033  command     write power on
+20:09:18.109 RX 3301000000000000000000000000000000000032  ack         ack power write: accepted
+20:09:18.380 TX aa010000000000000000000000000000000000ab  query       read power (heartbeat)
+20:09:18.452 RX aa010100000000000000000000000000000000aa  reply       power on
+   => power: ECHOED
+20:09:18.455 TX aa060000000000000000000000000000000000ac  query       read version
+20:09:18.530 RX aa06312e30372e30320000000000000000000098  reply       firmware 1.07.02
+20:09:18.532 TX aa010000000000000000000000000000000000ab  query       read power (heartbeat)
+20:09:18.605 RX aa010100000000000000000000000000000000aa  reply       power on
+20:09:18.607 TX aa040000000000000000000000000000000000ae  query       read brightness
+20:09:18.675 RX aa041a00000000000000000000000000000000b4  reply       brightness level 26
+20:09:18.677 TX aa050100000000000000000000000000000000ae  query       read mode
+20:09:18.782 RX aa0502d6e2ff0000000000000000000000000066  reply       mode colour (0x02, H6159 dialect), rgb 214 226 255
+** light disconnected **
+
+verify summary:
+  brightness: ECHOED
+  brightness: ECHOED
+  brightness: ECHOED
+  ct: ECHOED (white flag + tint (255, 167, 87))
+  ct: ECHOED (white flag + tint (255, 254, 250))
+  rgb: ECHOED
+  power: ECHOED

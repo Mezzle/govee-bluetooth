@@ -1,0 +1,6 @@
+{"model": "H6159", "trial": 1, "elapsed_s": 16.587, "exit_code": 0, "reads_passed": false, "disconnect_callbacks_before_connected": 0}
+{"model": "H6159", "trial": 2, "elapsed_s": 15.994, "exit_code": 0, "reads_passed": false, "disconnect_callbacks_before_connected": 1}
+{"model": "H6159", "trial": 3, "elapsed_s": 12.658, "exit_code": 0, "reads_passed": false, "disconnect_callbacks_before_connected": 1}
+{"model": "H6181", "trial": 1, "elapsed_s": 14.466, "exit_code": 0, "reads_passed": true, "disconnect_callbacks_before_connected": 1}
+{"model": "H6181", "trial": 2, "elapsed_s": 10.906, "exit_code": 0, "reads_passed": true, "disconnect_callbacks_before_connected": 2}
+{"model": "H6181", "trial": 3, "elapsed_s": 10.148, "exit_code": 0, "reads_passed": true, "disconnect_callbacks_before_connected": 0}

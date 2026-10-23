@@ -1,0 +1,62 @@
+profile: Govee RGB TV backlight (0x0D colour scheme); colour sub-mode colour (0x0D, RGBWW dialect), brightness scale 100
+connecting to 60:74:F4:6A:FB:1E ...
+** light disconnected **
+** light disconnected **
+** light disconnected **
+** light disconnected **
+/home/homelab-operator/rig/lib/python3.13/site-packages/bleak/backends/bluezdbus/client.py:646: UserWarning: Using default MTU value. Call _acquire_mtu() or set _mtu_size first to avoid this warning.
+  warnings.warn(
+connected (mtu 23); 2b11 ['read', 'write-without-response'], writing without response
+20:12:24.930 TX aa010000000000000000000000000000000000ab  query       read power (heartbeat)
+20:12:25.918 RX aa010100000000000000000000000000000000aa  reply       power on
+20:12:25.927 TX aa040000000000000000000000000000000000ae  query       read brightness
+20:12:27.535 RX aa046400000000000000000000000000000000ca  reply       brightness level 100
+20:12:27.537 TX aa050100000000000000000000000000000000ae  query       read mode
+20:12:29.383 RX aa050dffffff000000000000000000000000005d  reply       mode colour (0x0D, RGBWW dialect), rgb 255 255 255
+20:12:29.385 TX 33041e0000000000000000000000000000000029  command     write brightness level 30
+20:12:29.750 RX 3304000000000000000000000000000000000037  ack         ack brightness write: accepted
+20:12:29.981 TX aa040000000000000000000000000000000000ae  query       read brightness
+20:12:30.106 RX aa041e00000000000000000000000000000000b0  reply       brightness level 30
+   => brightness: ECHOED
+20:12:30.123 TX 33050d123456000000000000000000000000004b  command     write colour (0x0D, RGBWW dialect)
+20:12:30.204 RX 3305000000000000000000000000000000000036  ack         ack mode write: accepted
+20:12:30.469 TX aa050100000000000000000000000000000000ae  query       read mode
+20:12:30.551 RX aa050d12345600000000000000000000000000d2  reply       mode colour (0x0D, RGBWW dialect), rgb  18  52  86
+   => rgb: ECHOED
+20:12:30.554 TX 33050dffffff10ccffd5b3000000000000000081  command     write colour (0x0D, RGBWW dialect)
+20:12:30.692 RX 3305000000000000000000000000000000000036  ack         ack mode write: accepted
+20:12:30.901 TX aa050100000000000000000000000000000000ae  query       read mode
+20:12:30.990 RX aa050dffffff10ccffd5b3000000000000000018  reply       mode colour (0x0D, RGBWW dialect), rgb 255 255 255, 4300 K, white
+   => ct: ECHOED (4300 K)
+20:12:30.993 TX 33050dffffff00000000000000000000000000c4  command     write colour (0x0D, RGBWW dialect)
+20:12:31.141 RX 3305000000000000000000000000000000000036  ack         ack mode write: accepted
+20:12:31.330 TX aa050100000000000000000000000000000000ae  query       read mode
+20:12:31.426 RX aa050dffffff000000000000000000000000005d  reply       mode colour (0x0D, RGBWW dialect), rgb 255 255 255
+   => rgb: ECHOED
+20:12:31.443 TX 3304640000000000000000000000000000000053  command     write brightness level 100
+20:12:31.530 RX 3304000000000000000000000000000000000037  ack         ack brightness write: accepted
+20:12:31.783 TX aa040000000000000000000000000000000000ae  query       read brightness
+20:12:31.871 RX aa046400000000000000000000000000000000ca  reply       brightness level 100
+   => brightness: ECHOED
+20:12:31.874 TX 3301010000000000000000000000000000000033  command     write power on
+20:12:32.019 RX 3301000000000000000000000000000000000032  ack         ack power write: accepted
+20:12:32.208 TX aa010000000000000000000000000000000000ab  query       read power (heartbeat)
+20:12:32.310 RX aa010100000000000000000000000000000000aa  reply       power on
+   => power: ECHOED
+20:12:38.316 TX aa060000000000000000000000000000000000ac  query       read version
+20:12:38.403 RX aa06322e30332e3131000000000000000000009d  reply       firmware 2.03.11
+20:12:38.405 TX aa010000000000000000000000000000000000ab  query       read power (heartbeat)
+20:12:38.549 RX aa010100000000000000000000000000000000aa  reply       power on
+20:12:38.552 TX aa040000000000000000000000000000000000ae  query       read brightness
+20:12:38.701 RX aa046400000000000000000000000000000000ca  reply       brightness level 100
+20:12:38.703 TX aa050100000000000000000000000000000000ae  query       read mode
+20:12:38.850 RX aa050dffffff000000000000000000000000005d  reply       mode colour (0x0D, RGBWW dialect), rgb 255 255 255
+** light disconnected **
+
+verify summary:
+  brightness: ECHOED
+  rgb: ECHOED
+  ct: ECHOED (4300 K)
+  rgb: ECHOED
+  brightness: ECHOED
+  power: ECHOED

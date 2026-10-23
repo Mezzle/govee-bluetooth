@@ -1,0 +1,5 @@
+{"entity_id": "switch.tv_bias_light", "state": "on", "at": "2026-10-23T20:11:58.555095+00:00"}
+{"service": "turn_off", "entity_id": "switch.tv_bias_light", "at": "2026-10-23T20:11:58.601913+00:00"}
+{"entity_id": "switch.tv_bias_light", "state": "off", "at": "2026-10-23T20:12:00.654398+00:00"}
+{"service": "turn_on", "entity_id": "switch.tv_bias_light", "at": "2026-10-23T20:12:03.723645+00:00"}
+{"entity_id": "switch.tv_bias_light", "state": "on", "at": "2026-10-23T20:12:06.789605+00:00"}
