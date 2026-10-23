@@ -74,3 +74,13 @@ to. Keep such files private.
 turns it into the report; the JSON document (`govee-evidence-report/1`)
 keeps the per-device verdict, capability table, sources and the redacted
 frames.
+
+
+### Optional OTA metadata (Pi census)
+
+Light summaries may include `ota`: `status` (`services_detected` or
+`not_observed`), `transports` (transport name, service UUID, matching
+characteristic UUIDs/properties and a `complete` flag), and
+`update_verified: false`. This is read-only GATT discovery evidence.
+Missing `ota` means not inspected, while `not_observed` does not rule out
+an OTA bootloader. Model, hardware and firmware remain in the existing fields.

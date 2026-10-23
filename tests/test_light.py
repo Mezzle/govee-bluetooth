@@ -631,3 +631,26 @@ async def test_status_query_ignores_wrong_selector_reply(
             ),
         )
         assert await query is not None
+
+
+async def test_firmware_refreshes_after_reconnect(
+    hass: HomeAssistant, bluetooth_ready, fake_client: FakeGoveeClient
+) -> None:
+    entry = await setup_entry(hass)
+    device = entry.runtime_data.device
+    fake_client.replies[protocol.CMD_VERSION] = protocol.build_frame(
+        protocol.CMD_VERSION, list(b"1.00.18"), frame_type=protocol.TYPE_READ
+    )
+    await device.async_update()
+    assert device.state.firmware == "1.00.17"  # same connection: cached
+    assert not device.firmware_history
+
+    await device.async_disconnect()
+    fake_client.is_connected = True
+    await device.async_update()
+    assert device.state.firmware == "1.00.18"
+    assert len(device.firmware_history) == 1
+    assert device.firmware_history[0]["previous"] == "1.00.17"
+    assert device.firmware_history[0]["current"] == "1.00.18"
+    await device.async_update()
+    assert len(device.firmware_history) == 1

@@ -1,0 +1,635 @@
+{
+  "schema": "govee-evidence-report/1",
+  "generated_at": "2026-10-23T21:09:25+00:00",
+  "generator": "govee_report.py 64b2f0e",
+  "inputs": [
+    "h6159.jsonl",
+    "h6181.jsonl"
+  ],
+  "sessions": [
+    {
+      "summary": "session",
+      "schema": "govee-evidence/1",
+      "source": "pi",
+      "at": "2026-10-23T21:08:23.585+00:00",
+      "software": "govee_rig.py unknown",
+      "host": "discoball",
+      "adapter": "default",
+      "command": "census",
+      "probe": false,
+      "lights": 1,
+      "cipher": null,
+      "input": "h6159.jsonl"
+    },
+    {
+      "summary": "session",
+      "schema": "govee-evidence/1",
+      "source": "pi",
+      "at": "2026-10-23T21:08:51.003+00:00",
+      "software": "govee_rig.py unknown",
+      "host": "discoball",
+      "adapter": "default",
+      "command": "census",
+      "probe": false,
+      "lights": 1,
+      "cipher": null,
+      "input": "h6181.jsonl"
+    }
+  ],
+  "dance_party_certified": false,
+  "secrets_redacted": true,
+  "devices": [
+    {
+      "address": "60:74:F4:6A:FB:1E",
+      "name": null,
+      "model": "H6181",
+      "known_model": true,
+      "table_profile": {
+        "color_submode": "0x0d",
+        "brightness_scale": 100,
+        "description": "Govee RGB TV backlight (0x0D colour scheme)"
+      },
+      "sources": [
+        "pi"
+      ],
+      "dance_party_certified": false,
+      "firmware": "2.03.11",
+      "hardware": "2.01.01",
+      "pact": null,
+      "encrypted_flag": null,
+      "gatt": null,
+      "ota": {
+        "status": "services_detected",
+        "transports": [
+          {
+            "transport": "ti_oad_v2",
+            "service": "f000ffc0-0451-4000-b000-000000000000",
+            "characteristics": [
+              {
+                "uuid": "f000ffc2-0451-4000-b000-000000000000",
+                "properties": [
+                  "notify",
+                  "write",
+                  "write-without-response"
+                ]
+              },
+              {
+                "uuid": "f000ffc1-0451-4000-b000-000000000000",
+                "properties": [
+                  "notify",
+                  "write",
+                  "write-without-response"
+                ]
+              }
+            ],
+            "complete": true
+          }
+        ],
+        "update_verified": false
+      },
+      "bgc": null,
+      "verdict": {
+        "family": "plaintext-rgbww",
+        "security": "none",
+        "confidence": "inferred",
+        "reasons": [
+          "mode reply names sub-mode 0x0d (no write was tried)"
+        ],
+        "control_dialects": []
+      },
+      "capabilities": {
+        "power": {
+          "level": "inferred",
+          "basis": "AA 01 reply read back the power state"
+        },
+        "brightness": {
+          "level": "inferred",
+          "basis": "AA 04 reply read back the brightness"
+        },
+        "rgb": {
+          "level": "inferred",
+          "basis": "mode reply names colour sub-mode 0x0d; no write tried"
+        },
+        "rgbww": {
+          "level": "untested",
+          "basis": "no evidence"
+        },
+        "segments": {
+          "level": "untested",
+          "basis": "no evidence"
+        },
+        "scene": {
+          "level": "untested",
+          "basis": "no evidence"
+        },
+        "music": {
+          "level": "untested",
+          "basis": "no evidence"
+        }
+      },
+      "reads": {
+        "sent": 9,
+        "answered": 5,
+        "bad_frames": 0,
+        "acks": 0,
+        "timeouts": 0
+      },
+      "state_seen": {
+        "power": true,
+        "brightness": 100,
+        "submode": "0x0d"
+      },
+      "secret_present": false,
+      "restoration": null,
+      "probe": null,
+      "brightness_scale": null,
+      "colour_temperature": null,
+      "tests": [],
+      "observations": [],
+      "summaries": [
+        {
+          "summary": "light",
+          "schema": "govee-evidence/1",
+          "source": "pi",
+          "at": "2026-10-23T21:09:05.555+00:00",
+          "software": "govee_rig.py unknown",
+          "address": "60:74:F4:6A:FB:1E",
+          "name": "",
+          "model": "H6181",
+          "known_model": true,
+          "rssi": null,
+          "pact": null,
+          "flags": null,
+          "encrypted": null,
+          "dialect": "RGBWW",
+          "dialect_source": "table",
+          "secret_family": false,
+          "connected": true,
+          "subscribed": true,
+          "silent": false,
+          "reads": 9,
+          "replies": 5,
+          "power": true,
+          "brightness": 100,
+          "submode": "0D",
+          "submode_name": "colour0D",
+          "firmware": "2.03.11",
+          "hardware": "2.01.01",
+          "secret_present": false,
+          "segment_page": false,
+          "probed": false,
+          "ota": {
+            "status": "services_detected",
+            "transports": [
+              {
+                "transport": "ti_oad_v2",
+                "service": "f000ffc0-0451-4000-b000-000000000000",
+                "characteristics": [
+                  {
+                    "uuid": "f000ffc2-0451-4000-b000-000000000000",
+                    "properties": [
+                      "notify",
+                      "write",
+                      "write-without-response"
+                    ]
+                  },
+                  {
+                    "uuid": "f000ffc1-0451-4000-b000-000000000000",
+                    "properties": [
+                      "notify",
+                      "write",
+                      "write-without-response"
+                    ]
+                  }
+                ],
+                "complete": true
+              }
+            ],
+            "update_verified": false
+          },
+          "verdict": "plaintext-rgbww / none / inferred",
+          "input": "h6181.jsonl"
+        }
+      ],
+      "frames": [
+        {
+          "at": "2026-10-23T21:08:54.958+00:00",
+          "direction": "tx",
+          "frame": "aa010000000000000000000000000000000000ab",
+          "note": "query",
+          "decoded": "read power (heartbeat)",
+          "address": "60:74:F4:6A:FB:1E",
+          "source": "pi"
+        },
+        {
+          "at": "2026-10-23T21:08:55.038+00:00",
+          "direction": "rx",
+          "frame": "aa010100000000000000000000000000000000aa",
+          "note": "reply",
+          "decoded": "power on",
+          "address": "60:74:F4:6A:FB:1E",
+          "source": "pi"
+        },
+        {
+          "at": "2026-10-23T21:08:55.041+00:00",
+          "direction": "tx",
+          "frame": "aa040000000000000000000000000000000000ae",
+          "note": "query",
+          "decoded": "read brightness",
+          "address": "60:74:F4:6A:FB:1E",
+          "source": "pi"
+        },
+        {
+          "at": "2026-10-23T21:08:55.135+00:00",
+          "direction": "rx",
+          "frame": "aa046400000000000000000000000000000000ca",
+          "note": "reply",
+          "decoded": "brightness level 100",
+          "address": "60:74:F4:6A:FB:1E",
+          "source": "pi"
+        },
+        {
+          "at": "2026-10-23T21:08:55.137+00:00",
+          "direction": "tx",
+          "frame": "aa060000000000000000000000000000000000ac",
+          "note": "query",
+          "decoded": "read version",
+          "address": "60:74:F4:6A:FB:1E",
+          "source": "pi"
+        },
+        {
+          "at": "2026-10-23T21:08:55.282+00:00",
+          "direction": "rx",
+          "frame": "aa06322e30332e3131000000000000000000009d",
+          "note": "reply",
+          "decoded": "firmware 2.03.11",
+          "address": "60:74:F4:6A:FB:1E",
+          "source": "pi"
+        },
+        {
+          "at": "2026-10-23T21:08:55.285+00:00",
+          "direction": "tx",
+          "frame": "aa050100000000000000000000000000000000ae",
+          "note": "query",
+          "decoded": "read mode",
+          "address": "60:74:F4:6A:FB:1E",
+          "source": "pi"
+        },
+        {
+          "at": "2026-10-23T21:08:55.382+00:00",
+          "direction": "rx",
+          "frame": "aa050dffffff000000000000000000000000005d",
+          "note": "reply",
+          "decoded": "mode colour (0x0D, RGBWW dialect), rgb 255 255 255",
+          "address": "60:74:F4:6A:FB:1E",
+          "source": "pi"
+        },
+        {
+          "at": "2026-10-23T21:08:55.384+00:00",
+          "direction": "tx",
+          "frame": "aa070300000000000000000000000000000000ae",
+          "note": "query",
+          "decoded": "read info",
+          "address": "60:74:F4:6A:FB:1E",
+          "source": "pi"
+        },
+        {
+          "at": "2026-10-23T21:08:55.484+00:00",
+          "direction": "rx",
+          "frame": "aa0703322e30312e30310000000000000000009c",
+          "note": "reply",
+          "decoded": "hardware 2.01.01",
+          "address": "60:74:F4:6A:FB:1E",
+          "source": "pi"
+        },
+        {
+          "at": "2026-10-23T21:08:55.487+00:00",
+          "direction": "tx",
+          "frame": "aa400000000000000000000000000000000000ea",
+          "note": "query",
+          "decoded": "read icnum",
+          "address": "60:74:F4:6A:FB:1E",
+          "source": "pi"
+        },
+        {
+          "at": "2026-10-23T21:08:58.007+00:00",
+          "direction": "tx",
+          "frame": "aa0f0000000000000000000000000000000000a5",
+          "note": "query",
+          "decoded": "read lightnum",
+          "address": "60:74:F4:6A:FB:1E",
+          "source": "pi"
+        },
+        {
+          "at": "2026-10-23T21:09:00.524+00:00",
+          "direction": "tx",
+          "frame": "aab100000000000000000000000000000000001b",
+          "note": "query",
+          "decoded": "read secret",
+          "address": "60:74:F4:6A:FB:1E",
+          "source": "pi"
+        },
+        {
+          "at": "2026-10-23T21:09:03.038+00:00",
+          "direction": "tx",
+          "frame": "aaa501000000000000000000000000000000000e",
+          "note": "query",
+          "decoded": "read segcolour",
+          "address": "60:74:F4:6A:FB:1E",
+          "source": "pi"
+        }
+      ],
+      "frame_counts": {
+        "tx": 9,
+        "rx": 5,
+        "redacted": 0
+      },
+      "first_seen": "2026-10-23T21:08:54.958+00:00",
+      "last_seen": "2026-10-23T21:09:05.555+00:00",
+      "error": null
+    },
+    {
+      "address": "A4:C1:38:9C:8E:17",
+      "name": null,
+      "model": "H6159",
+      "known_model": true,
+      "table_profile": {
+        "color_submode": "0x02",
+        "brightness_scale": 255,
+        "description": "Govee RGB strip (H6159 family)"
+      },
+      "sources": [
+        "pi"
+      ],
+      "dance_party_certified": false,
+      "firmware": "1.07.02",
+      "hardware": "1.00.02",
+      "pact": null,
+      "encrypted_flag": null,
+      "gatt": null,
+      "ota": {
+        "status": "services_detected",
+        "transports": [
+          {
+            "transport": "govee_v1",
+            "service": "00010203-0405-0607-0809-0a0b0c0d1912",
+            "characteristics": [
+              {
+                "uuid": "00010203-0405-0607-0809-0a0b0c0d2b12",
+                "properties": [
+                  "read",
+                  "write-without-response"
+                ]
+              }
+            ],
+            "complete": true
+          }
+        ],
+        "update_verified": false
+      },
+      "bgc": "00",
+      "verdict": {
+        "family": "plaintext-legacy",
+        "security": "none",
+        "confidence": "inferred",
+        "reasons": [
+          "2b12 bytes 00: encryptVersion 0 (both candidate bytes zero (plaintext))",
+          "mode reply names sub-mode 0x02 (no write was tried)"
+        ],
+        "control_dialects": []
+      },
+      "capabilities": {
+        "power": {
+          "level": "untested",
+          "basis": "no evidence"
+        },
+        "brightness": {
+          "level": "inferred",
+          "basis": "AA 04 reply read back the brightness"
+        },
+        "rgb": {
+          "level": "inferred",
+          "basis": "mode reply names colour sub-mode 0x02; no write tried"
+        },
+        "rgbww": {
+          "level": "untested",
+          "basis": "no evidence"
+        },
+        "segments": {
+          "level": "untested",
+          "basis": "no evidence"
+        },
+        "scene": {
+          "level": "untested",
+          "basis": "no evidence"
+        },
+        "music": {
+          "level": "untested",
+          "basis": "no evidence"
+        }
+      },
+      "reads": {
+        "sent": 9,
+        "answered": 4,
+        "bad_frames": 0,
+        "acks": 0,
+        "timeouts": 0
+      },
+      "state_seen": {
+        "brightness": 26,
+        "submode": "0x02"
+      },
+      "secret_present": false,
+      "restoration": null,
+      "probe": null,
+      "brightness_scale": null,
+      "colour_temperature": null,
+      "tests": [],
+      "observations": [],
+      "summaries": [
+        {
+          "summary": "light",
+          "schema": "govee-evidence/1",
+          "source": "pi",
+          "at": "2026-10-23T21:08:40.393+00:00",
+          "software": "govee_rig.py unknown",
+          "address": "A4:C1:38:9C:8E:17",
+          "name": "",
+          "model": "H6159",
+          "known_model": true,
+          "rssi": null,
+          "pact": null,
+          "flags": null,
+          "encrypted": null,
+          "dialect": "RGB",
+          "dialect_source": "table",
+          "secret_family": false,
+          "connected": true,
+          "subscribed": true,
+          "silent": false,
+          "reads": 9,
+          "replies": 4,
+          "brightness": 26,
+          "submode": "02",
+          "submode_name": "colour02",
+          "firmware": "1.07.02",
+          "hardware": "1.00.02",
+          "secret_present": false,
+          "segment_page": false,
+          "probed": false,
+          "ota": {
+            "status": "services_detected",
+            "transports": [
+              {
+                "transport": "govee_v1",
+                "service": "00010203-0405-0607-0809-0a0b0c0d1912",
+                "characteristics": [
+                  {
+                    "uuid": "00010203-0405-0607-0809-0a0b0c0d2b12",
+                    "properties": [
+                      "read",
+                      "write-without-response"
+                    ]
+                  }
+                ],
+                "complete": true
+              }
+            ],
+            "update_verified": false
+          },
+          "bgc": "00",
+          "verdict": "plaintext-legacy / none / inferred",
+          "input": "h6159.jsonl"
+        }
+      ],
+      "frames": [
+        {
+          "at": "2026-10-23T21:08:27.397+00:00",
+          "direction": "tx",
+          "frame": "aa010000000000000000000000000000000000ab",
+          "note": "query",
+          "decoded": "read power (heartbeat)",
+          "address": "A4:C1:38:9C:8E:17",
+          "source": "pi"
+        },
+        {
+          "at": "2026-10-23T21:08:29.913+00:00",
+          "direction": "tx",
+          "frame": "aa040000000000000000000000000000000000ae",
+          "note": "query",
+          "decoded": "read brightness",
+          "address": "A4:C1:38:9C:8E:17",
+          "source": "pi"
+        },
+        {
+          "at": "2026-10-23T21:08:30.026+00:00",
+          "direction": "rx",
+          "frame": "aa041a00000000000000000000000000000000b4",
+          "note": "reply",
+          "decoded": "brightness level 26",
+          "address": "A4:C1:38:9C:8E:17",
+          "source": "pi"
+        },
+        {
+          "at": "2026-10-23T21:08:30.034+00:00",
+          "direction": "tx",
+          "frame": "aa060000000000000000000000000000000000ac",
+          "note": "query",
+          "decoded": "read version",
+          "address": "A4:C1:38:9C:8E:17",
+          "source": "pi"
+        },
+        {
+          "at": "2026-10-23T21:08:30.123+00:00",
+          "direction": "rx",
+          "frame": "aa06312e30372e30320000000000000000000098",
+          "note": "reply",
+          "decoded": "firmware 1.07.02",
+          "address": "A4:C1:38:9C:8E:17",
+          "source": "pi"
+        },
+        {
+          "at": "2026-10-23T21:08:30.126+00:00",
+          "direction": "tx",
+          "frame": "aa050100000000000000000000000000000000ae",
+          "note": "query",
+          "decoded": "read mode",
+          "address": "A4:C1:38:9C:8E:17",
+          "source": "pi"
+        },
+        {
+          "at": "2026-10-23T21:08:30.224+00:00",
+          "direction": "rx",
+          "frame": "aa0502d6e2ff0000000000000000000000000066",
+          "note": "reply",
+          "decoded": "mode colour (0x02, H6159 dialect), rgb 214 226 255",
+          "address": "A4:C1:38:9C:8E:17",
+          "source": "pi"
+        },
+        {
+          "at": "2026-10-23T21:08:30.227+00:00",
+          "direction": "tx",
+          "frame": "aa070300000000000000000000000000000000ae",
+          "note": "query",
+          "decoded": "read info",
+          "address": "A4:C1:38:9C:8E:17",
+          "source": "pi"
+        },
+        {
+          "at": "2026-10-23T21:08:30.318+00:00",
+          "direction": "rx",
+          "frame": "aa0703312e30302e30320000000000000000009d",
+          "note": "reply",
+          "decoded": "hardware 1.00.02",
+          "address": "A4:C1:38:9C:8E:17",
+          "source": "pi"
+        },
+        {
+          "at": "2026-10-23T21:08:30.326+00:00",
+          "direction": "tx",
+          "frame": "aa400000000000000000000000000000000000ea",
+          "note": "query",
+          "decoded": "read icnum",
+          "address": "A4:C1:38:9C:8E:17",
+          "source": "pi"
+        },
+        {
+          "at": "2026-10-23T21:08:32.840+00:00",
+          "direction": "tx",
+          "frame": "aa0f0000000000000000000000000000000000a5",
+          "note": "query",
+          "decoded": "read lightnum",
+          "address": "A4:C1:38:9C:8E:17",
+          "source": "pi"
+        },
+        {
+          "at": "2026-10-23T21:08:35.354+00:00",
+          "direction": "tx",
+          "frame": "aab100000000000000000000000000000000001b",
+          "note": "query",
+          "decoded": "read secret",
+          "address": "A4:C1:38:9C:8E:17",
+          "source": "pi"
+        },
+        {
+          "at": "2026-10-23T21:08:37.877+00:00",
+          "direction": "tx",
+          "frame": "aaa501000000000000000000000000000000000e",
+          "note": "query",
+          "decoded": "read segcolour",
+          "address": "A4:C1:38:9C:8E:17",
+          "source": "pi"
+        }
+      ],
+      "frame_counts": {
+        "tx": 9,
+        "rx": 4,
+        "redacted": 0
+      },
+      "first_seen": "2026-10-23T21:08:27.397+00:00",
+      "last_seen": "2026-10-23T21:08:40.393+00:00",
+      "error": null
+    }
+  ],
+  "seen_in_scan": []
+}

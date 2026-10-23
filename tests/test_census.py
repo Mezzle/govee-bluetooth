@@ -416,3 +416,41 @@ async def test_no_reset_is_announced_when_the_start_was_a_scene() -> None:
     result = await census.async_census(light, probe_writes=True, ask=ask, notify=notes.append)
     assert len(notes) == 1 and "scene" in notes[0] and "no reset between colours" in notes[0]
     assert result.restored == "power"
+
+
+def test_ota_metadata_requires_correct_service():
+    from types import SimpleNamespace
+
+    from custom_components.govee_bluetooth.census import ota_capabilities
+
+    data_uuid = "00010203-0405-0607-0809-0a0b0c0d2b12"
+    bgc = SimpleNamespace(
+        uuid="00010203-0405-0607-0809-0a0b0c0d1910",
+        characteristics=[SimpleNamespace(uuid=data_uuid, properties=["read"])],
+    )
+    assert ota_capabilities([bgc])["status"] == "not_observed"
+    ota = SimpleNamespace(
+        uuid="00010203-0405-0607-0809-0a0b0c0d1912",
+        characteristics=[SimpleNamespace(uuid=data_uuid.upper(), properties=["write"])],
+    )
+    report = ota_capabilities([bgc, ota])
+    assert report["status"] == "services_detected"
+    assert report["transports"][0]["complete"]
+    assert report["update_verified"] is False
+
+
+def test_ota_partial_ti_service_is_not_complete():
+    from types import SimpleNamespace
+
+    from custom_components.govee_bluetooth.census import ota_capabilities
+
+    report = ota_capabilities(
+        [
+            SimpleNamespace(
+                uuid="F000FFC0-0451-4000-B000-000000000000",
+                characteristics=[],
+            )
+        ]
+    )
+    assert report["transports"][0]["transport"] == "ti_oad_v2"
+    assert not report["transports"][0]["complete"]

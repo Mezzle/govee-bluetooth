@@ -124,6 +124,19 @@ is to write above 100, which the H6181 silently ignores. It is derived from
 the detected sub-mode instead (`0x02` → 0-255, `0x0D`/`0x15` → 0-100) and can
 be overridden under **Configure**.
 
+### Firmware changes
+
+The first status poll on each Bluetooth connection reads the firmware version.
+A changed version updates Home Assistant's device information; the last ten
+changes (time, previous and current version) are included as
+`firmware_history` in diagnostics. This history lasts until the integration
+reloads. Colour dialect read-back still runs on every poll and honours manual
+overrides. An unanswered version query is retried on the next poll.
+
+The Pi census also reports discovered OTA services; see
+[bench firmware inspection](tools/README.md#firmware-update-capabilities).
+Firmware installation and checking for available releases are not implemented.
+
 ### Options
 
 **Configure** opens a menu: *Settings and manual overrides*, *Re-run the

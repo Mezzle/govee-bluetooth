@@ -225,3 +225,29 @@ Findings go to `bench/LABEL.env` and frame logs to `bench/LABEL-*.jsonl`.
 `bench/` is git-ignored because the
 record may hold the secret. Re-running offers each recorded value as the
 default. `PYTHON=/path/to/python` overrides the default `~/rig/bin/python`.
+
+
+## Firmware update capabilities
+
+Run the normal census to inspect the discovered GATT metadata:
+
+```sh
+python3 tools/govee_rig.py --log census.jsonl census ADDRESS
+python3 tools/govee_report.py census.jsonl --markdown report.md --json evidence.json
+```
+
+The console and light summary's `ota` field report Govee V1 and TI OAD V2
+services, matching characteristics and their properties. The report preserves
+this evidence alongside model, firmware and hardware versions. Older captures
+show “not inspected”.
+
+This inspection sends no OTA prepare commands and does not read, subscribe to,
+or write OTA characteristics. Normal census status reads still run. Leave off
+`--probe` for the read-only census. The V1 data characteristic shares a UUID
+with control-service BGC-info, so only its presence under the OTA service counts.
+
+`services_detected` means metadata was found, not that installation is verified.
+`complete` means all expected characteristic UUIDs were present.
+`not_observed` means no recognised OTA service was discovered in the current
+mode; a bootloader or another update transport may still exist.
+`update_verified` is always false. No firmware is downloaded or installed.

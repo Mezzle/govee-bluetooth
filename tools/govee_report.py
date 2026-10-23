@@ -634,6 +634,7 @@ def analyse(evidence: Evidence) -> dict[str, Any]:
                 "pact": adv_source.get("pact") if adv_source else None,
                 "encrypted_flag": adv_source.get("encrypted") if adv_source else None,
                 "gatt": summary.get("gatt") if summary else None,
+                "ota": summary.get("ota") if summary else None,
                 "bgc": summary.get("bgc") if summary else None,
                 "verdict": {
                     "family": verdict.family,
@@ -786,6 +787,7 @@ def render_markdown(doc: dict[str, Any]) -> str:
                 (dev["model"] or "-") + ("" if dev["known_model"] else " (not in the model table)"),
             ),
             ("firmware / hardware", f"{dev['firmware'] or '?'} / {dev['hardware'] or '?'}"),
+            ("OTA services (update unverified)", str(dev.get("ota") or "not inspected")),
             (
                 "pact / encryption flag",
                 f"{dev['pact'] or '?'} / {dev['encrypted_flag'] if dev['encrypted_flag'] is not None else '?'}",

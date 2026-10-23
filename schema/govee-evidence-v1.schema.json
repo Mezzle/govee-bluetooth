@@ -240,6 +240,16 @@
         "aborted": {
           "type": "boolean"
         },
+        "ota": {
+          "type": "object",
+          "description": "Read-only inspection of discovered OTA GATT services; not proof of update support.",
+          "required": ["status", "transports", "update_verified"],
+          "properties": {
+            "status": {"enum": ["services_detected", "not_observed"]},
+            "transports": {"type": "array", "items": {"type": "object"}},
+            "update_verified": {"const": false}
+          }
+        },
         "gatt": {
           "type": "string",
           "description": "Govee characteristics present, e.g. '1910/2b11/2b10/2b12', '1910/2b11/2b10+ffe0', 'none'"
