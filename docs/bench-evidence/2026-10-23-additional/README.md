@@ -104,3 +104,18 @@ handshakes, BLE pairing traffic or full HA responses were saved.
 `reconnect.py` and `reconnect-delay1.py` reproduce the read-only comparison
 from repo root; they require the stated SSH host/installed rig and do not
 control mains power. They save per-trial verdicts, including missing replies.
+
+## Follow-up evidence integration
+
+The later explicitly authorised shared bedside mains recovery test is recorded
+in [the appendix](BEDSIDE-POWER-APPENDIX.md). It adds 51 validated frames and
+confirms H6159 recovery, native writes, restoration and three heartbeat replies
+on exact commit `7558bcad`. The earlier leave-on decision above describes the
+initial phase; the appendix records the subsequent authorisation and cycle.
+
+Across both phases, **399 frames** pass offline checksum/type/opcode validation.
+The 29 fixture cases now include explicit expected fields; decoder tests check
+those fields and their source timestamp/frame provenance, and confirm ACKs are
+not treated as read state. After evidence integration, **221 tests passed**;
+Ruff lint and formatting passed. Collector/reconnect scripts were formatted to
+repository style without running additional hardware probes.
