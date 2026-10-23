@@ -598,3 +598,36 @@ async def test_unwritable_control_disconnects_before_sending(
     assert not entry.runtime_data.last_update_success
     assert fake_client.disconnects == 1
     assert not fake_client.writes
+
+
+async def test_status_query_ignores_wrong_selector_reply(
+    hass: HomeAssistant, bluetooth_ready, fake_client: FakeGoveeClient
+) -> None:
+    entry = await setup_entry(hass)
+    device = entry.runtime_data.device
+    request = protocol.hardware_query_frame()
+    sent = asyncio.Event()
+
+    async def send(_uuid, frame, **_kwargs):
+        if frame == request:
+            sent.set()
+
+    with patch.object(fake_client, "write_gatt_char", side_effect=send):
+        query = asyncio.create_task(device._exchange.query(request))
+        await sent.wait()
+        device._on_notify(
+            None,
+            bytearray(
+                protocol.build_frame(request[1], [request[2] ^ 1], frame_type=protocol.TYPE_READ)
+            ),
+        )
+        assert not query.done()
+        device._on_notify(
+            None,
+            bytearray(
+                protocol.build_frame(
+                    request[1], [request[2], 1, 2, 3], frame_type=protocol.TYPE_READ
+                )
+            ),
+        )
+        assert await query is not None

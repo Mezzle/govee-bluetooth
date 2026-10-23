@@ -40,6 +40,7 @@ from homeassistant.core import HomeAssistant, callback
 
 from . import probe, protocol
 from .const import CONTROL_CHARACTERISTIC_UUID, STATUS_CHARACTERISTIC_UUID
+from .exchange import ConnectionLost, FrameExchange
 from .models import ModelProfile, brightness_scale_for_submode
 
 _LOGGER = logging.getLogger(__name__)
@@ -122,7 +123,7 @@ class GoveeBleDevice:
         self._heartbeat_task: asyncio.Task[None] | None = None
         self._idle_handle: asyncio.TimerHandle | None = None
         self._last_command_at = 0.0
-        self._pending: dict[int, asyncio.Future[protocol.Reply]] = {}
+        self._exchange = FrameExchange(self._send_frame, QUERY_TIMEOUT)
         self._listeners: list[Callable[[GoveeState], None]] = []
         self._scene_names = {v: k for k, v in profile.scenes.items()}
         self._frame_log: deque[FrameRecord] = deque(maxlen=FRAME_LOG_SIZE)
@@ -217,23 +218,15 @@ class GoveeBleDevice:
         """Read power, brightness and mode from the light."""
         async with self._lock:
             self._in_flight = asyncio.current_task()
-            client = await self._async_connect()
+            await self._async_connect()
             try:
-                power = await self._async_query(
-                    client, protocol.power_query_frame(), protocol.CMD_POWER
-                )
-                brightness = await self._async_query(
-                    client, protocol.brightness_query_frame(), protocol.CMD_BRIGHTNESS
-                )
-                mode = await self._async_query(
-                    client, protocol.mode_query_frame(), protocol.CMD_MODE
-                )
+                power = await self._exchange.query(protocol.power_query_frame())
+                brightness = await self._exchange.query(protocol.brightness_query_frame())
+                mode = await self._exchange.query(protocol.mode_query_frame())
                 firmware = None
                 if self.state.firmware is None:
-                    firmware = await self._async_query(
-                        client, protocol.version_query_frame(), protocol.CMD_VERSION
-                    )
-            except (BleakError, OSError) as err:
+                    firmware = await self._exchange.query(protocol.version_query_frame())
+            except (BleakError, OSError, ConnectionLost) as err:
                 await self._async_disconnect_locked()
                 raise GoveeConnectionError(f"Status read from {self.name} failed: {err}") from err
             finally:
@@ -402,7 +395,8 @@ class GoveeBleDevice:
             if characteristic is None:
                 raise ValueError("Govee control characteristic is missing")
             properties = tuple(characteristic.properties)
-            response = protocol.control_write_response(properties)
+            self._exchange.connected(properties)
+            response = self._exchange.write_response
         except (BleakError, ValueError) as err:
             await client.disconnect()
             raise GoveeConnectionError(
@@ -433,57 +427,34 @@ class GoveeBleDevice:
             return
         async with self._lock:
             self._in_flight = asyncio.current_task()
-            client = await self._async_connect()
+            await self._async_connect()
             try:
                 for index, frame in enumerate(frames):
-                    _LOGGER.debug("%s -> %s", self.name, frame.hex())
-                    self._record_frame("tx", frame, "command")
-                    await client.write_gatt_char(
-                        CONTROL_CHARACTERISTIC_UUID, frame, response=self.write_response
-                    )
+                    await self._exchange.write(frame)
                     if index < len(frames) - 1:
                         await asyncio.sleep(INTER_FRAME_DELAY)
-            except (BleakError, TimeoutError, OSError) as err:
+            except (BleakError, TimeoutError, OSError, ConnectionLost) as err:
                 await self._async_disconnect_locked()
                 raise GoveeConnectionError(f"Command to {self.name} failed: {err}") from err
             finally:
                 self._touch()
 
-    async def _async_query(
-        self, client: BleakClientWithServiceCache, frame: bytes, command: int
-    ) -> protocol.Reply | None:
-        """Write a read request and wait for the matching reply."""
-        loop = asyncio.get_running_loop()
-        future: asyncio.Future[protocol.Reply] = loop.create_future()
-        self._pending[command] = future
-        try:
-            _LOGGER.debug("%s -> %s (query)", self.name, frame.hex())
-            self._record_frame("tx", frame, "query")
-            await client.write_gatt_char(
-                CONTROL_CHARACTERISTIC_UUID, frame, response=self.write_response
-            )
-            return await asyncio.wait_for(future, QUERY_TIMEOUT)
-        except TimeoutError:
-            _LOGGER.debug("%s: no reply to query %#04x", self.name, command)
-            return None
-        finally:
-            if self._pending.get(command) is future:
-                del self._pending[command]
+    async def _send_frame(self, frame: bytes, response: bool, note: str) -> None:
+        client = self._client
+        if client is None or not client.is_connected:
+            raise ConnectionLost("link closed")
+        _LOGGER.debug("%s -> %s (%s)", self.name, frame.hex(), note)
+        self._record_frame("tx", frame, note)
+        await client.write_gatt_char(CONTROL_CHARACTERISTIC_UUID, frame, response=response)
 
     @callback
     def _on_notify(self, _sender: Any, data: bytearray) -> None:
         frame = bytes(data)
         _LOGGER.debug("%s <- %s", self.name, frame.hex())
-        reply = protocol.parse_reply(frame)
-        if reply is None:
-            self._record_frame("rx", frame, "unparsed")
+        note, reply = self._exchange.receive(frame)
+        self._record_frame("rx", frame, note)
+        if note != "unsolicited" or reply is None:
             return
-        future = self._pending.get(reply.command)
-        if future is not None and not future.done():
-            self._record_frame("rx", frame, "reply")
-            future.set_result(reply)
-            return
-        self._record_frame("rx", frame, "unsolicited")
         # Unsolicited reply, most likely to a heartbeat: keep power state fresh.
         if reply.power is not None:
             self._set_state(is_on=reply.power)
@@ -503,10 +474,7 @@ class GoveeBleDevice:
         if self._idle_handle is not None:
             self._idle_handle.cancel()
             self._idle_handle = None
-        for future in self._pending.values():
-            if not future.done():
-                future.cancel()
-        self._pending.clear()
+        self._exchange.disconnected()
 
     async def _async_disconnect_locked(self) -> None:
         client = self._client
@@ -558,13 +526,8 @@ class GoveeBleDevice:
                 if self._lock.locked():
                     continue  # a command is in flight, that counts as activity
                 try:
-                    self._record_frame("tx", protocol.heartbeat_frame(), "heartbeat")
-                    await client.write_gatt_char(
-                        CONTROL_CHARACTERISTIC_UUID,
-                        protocol.heartbeat_frame(),
-                        response=self.write_response,
-                    )
-                except (BleakError, OSError) as err:
+                    await self._exchange.write(protocol.heartbeat_frame(), "heartbeat")
+                except (BleakError, OSError, ConnectionLost) as err:
                     _LOGGER.debug("%s heartbeat failed: %s", self.name, err)
                     return
         except asyncio.CancelledError:
@@ -582,19 +545,15 @@ class _ProbeLink:
         if not self._client.is_connected:
             raise probe.ProbeConnectionLost("link closed")
         try:
-            _LOGGER.debug("%s -> %s (probe)", self._device.name, frame.hex())
-            self._device._record_frame("tx", frame, "probe")
-            await self._client.write_gatt_char(
-                CONTROL_CHARACTERISTIC_UUID, frame, response=self._device.write_response
-            )
+            await self._device._exchange.write(frame, "probe")
             await asyncio.sleep(INTER_FRAME_DELAY)
-        except (BleakError, TimeoutError, OSError) as err:
+        except (BleakError, TimeoutError, OSError, ConnectionLost) as err:
             raise probe.ProbeConnectionLost(str(err)) from err
 
     async def query(self, frame: bytes, command: int) -> protocol.Reply | None:
         if not self._client.is_connected:
             raise probe.ProbeConnectionLost("link closed")
         try:
-            return await self._device._async_query(self._client, frame, command)
-        except (BleakError, OSError) as err:
+            return await self._device._exchange.query(frame)
+        except (BleakError, OSError, ConnectionLost) as err:
             raise probe.ProbeConnectionLost(str(err)) from err
