@@ -184,6 +184,10 @@ turns those logs into a compatibility report with a verdict, a confidence
 and the sources behind each claim. See `tools/README.md`,
 `docs/evidence-schema.md`, `docs/census-gap-analysis.md` and, for the
 encrypted and secret-locked families, `docs/encrypted-protocol-matrix.md`.
+The supporting security research is collected in
+`docs/bluetooth-encryption-research.md`,
+`docs/pairing-secret-research-sources.md`, and
+`docs/cheap-pairing-secret-test-hardware.md`.
 
 ## How it talks to the strip
 
