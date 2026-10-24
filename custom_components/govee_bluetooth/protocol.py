@@ -330,6 +330,7 @@ class ModeReport:
     # 0x02 and 0x0D kinds seen on hardware (H6159, H6181, H6006) the reply
     # mirrors the write layout, so writing them back restores the state.
     body: bytes = b""
+    tint_is_derived: bool = False
 
     @property
     def is_white(self) -> bool:
@@ -340,7 +341,7 @@ class ModeReport:
 class SegmentRecord:
     """One ``[bri R G B]`` record of an ``AA A5`` page."""
 
-    brightness: int
+    brightness: int | None
     rgb: tuple[int, int, int]
 
 
@@ -349,6 +350,7 @@ class Reply:
     """One decoded frame from the status characteristic."""
 
     command: int
+    raw: bytes = b""
     power: bool | None = None
     brightness_level: int | None = None
     mode: ModeReport | None = None
@@ -365,6 +367,13 @@ class Reply:
 
 
 def parse_reply(frame: bytes) -> Reply | None:
+    reply = _parse_reply(frame)
+    if reply is not None:
+        reply.raw = bytes(frame)
+    return reply
+
+
+def _parse_reply(frame: bytes) -> Reply | None:
     """Decode an ``AA``-type read reply. Returns None for anything else."""
     frame = bytes(frame)
     if not verify_frame(frame) or frame[0] != TYPE_READ:
@@ -396,12 +405,13 @@ def parse_reply(frame: bytes) -> Reply | None:
         return Reply(
             command, secret_present=present, secret=bytes(payload[1:9]) if present else None
         )
-    if command == CMD_SEGMENT_COLORS:
+    if command in (CMD_SEGMENT_COLORS, 0xA2):
         return Reply(
             command,
             segment_group=payload[0],
             raw_selector=payload[0],
-            segment_records=_segment_records(payload[1:]),
+            # Geometry is external: retain raw bytes, not guessed records.
+            segment_records=None,
         )
     return Reply(command)
 
@@ -414,17 +424,6 @@ def _ascii(data: bytes) -> str:
             break
         out.append(chr(byte))
     return "".join(out).rstrip()
-
-
-def _segment_records(data: bytes) -> list[SegmentRecord]:
-    """``[bri R G B]`` x N; a page of all zeros means "no records"."""
-    records = []
-    for i in range(0, len(data) - 3, 4):
-        bri, r, g, b = data[i : i + 4]
-        if (bri, r, g, b) == (0, 0, 0, 0):
-            break
-        records.append(SegmentRecord(bri, (r, g, b)))
-    return records
 
 
 def segment_page_has(reply: Reply | None, rgb: tuple[int, int, int]) -> bool:
@@ -455,6 +454,7 @@ def _parse_mode(payload: bytes) -> ModeReport:
         if kelvin:
             report.color_temp_kelvin = kelvin
             report.white_tint = kelvin_to_rgb(kelvin)
+            report.tint_is_derived = True
             report.rgb = report.white_tint
     elif submode == SUBMODE_COLOR_RGBWW:
         # ``AA 05 0D R G B <kHi> <kLo> R2 G2 B2``: mirrors the write body.
@@ -465,6 +465,7 @@ def _parse_mode(payload: bytes) -> ModeReport:
             report.color_temp_kelvin = kelvin
             tint = (payload[6], payload[7], payload[8])
             report.white_tint = tint if any(tint) else kelvin_to_rgb(kelvin)
+            report.tint_is_derived = not any(tint)
     elif submode == SUBMODE_COLOR_DREAMCOLOR:
         # The app's reader for a 0x0B reply is ``[gradual, kHi, kLo]`` with no
         # RGB (docs/govee-ble-protocol.md section 6.2); RGB comes from the

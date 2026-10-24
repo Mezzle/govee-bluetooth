@@ -18,9 +18,10 @@ is used by the rest of that generation of strips (see
 - `light` entity with on/off, brightness, RGB colour, colour temperature
   (emulated with the RGB LEDs, the way the Govee app does it) and the
   firmware's built-in scenes as effects.
-- Real state read-back, not just optimistic state: power, brightness and
-  colour are polled on a configurable interval, and the keep-alive echo keeps
-  the power state fresh while a connection is open.
+- Power, brightness and mode readback on a configurable interval, plus colour
+  where the model's read layout is qualified. Per-field provenance distinguishes
+  observations, calculations and optimistic writes; the keep-alive echo keeps
+  power state fresh while connected.
 - Connections are short-lived by default so a proxy's limited connection
   slots are shared fairly between strips, with a configurable linger so a
   burst of commands reuses one connection.
@@ -131,7 +132,30 @@ A changed version updates Home Assistant's device information; the last ten
 changes (time, previous and current version) are included as
 `firmware_history` in diagnostics. This history lasts until the integration
 reloads. Colour dialect read-back still runs on every poll and honours manual
-overrides. An unanswered version query is retried on the next poll.
+overrides. An unanswered version query is retried on the next connection.
+
+### Qualified readback and diagnostics
+
+Normal refresh also collects optional hardware/topology or colour pages where a
+separate readback profile supports them. H6159/H6181/H6006 hardware versions
+appear in the device registry. H617A pact 10/1 firmware 3.02.24 has a bounded
+complete colour-page reader; H6062 has a cached section-count read. H60A6 has a
+source-qualified bulk/notification path. These source-derived additions have not
+been newly qualified on hardware. Disputed H6047/H6641 page formats stay disabled.
+
+The light exposes per-field source and observation time (`observed`, `derived`,
+`optimistic`, `unknown`). Multicolour pages stay segment data; a single page is not
+presented as whole-light RGB. Unanswered optional reads are cached and do not make
+a working light unavailable or imply a zero count. Reload resets the cache.
+
+Diagnostic sensors, disabled by default, expose the readback profile, observation
+and application-acceptance times, page completeness, reported topology counts and
+host failure counters. They share cached state and never query separately. Counts
+do not change write masks. These are protocol/host diagnostics, not power,
+temperature or per-LED health measurements.
+
+See [implementation qualifications and offline tests](docs/ble-readback-implementation.md)
+for the model gates, caching rules and remaining limitations.
 
 The Pi census also reports discovered OTA services; see
 [bench firmware inspection](tools/README.md#firmware-update-capabilities).

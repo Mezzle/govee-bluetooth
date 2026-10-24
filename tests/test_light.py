@@ -94,6 +94,7 @@ async def test_initial_poll_populates_state(
         b"\xaa\x04",
         b"\xaa\x05",
         b"\xaa\x06",
+        b"\xaa\x07",  # bounded optional hardware version read
     ]
     assert fake_client.writes[2][:3] == b"\xaa\x05\x01"
 
@@ -264,8 +265,8 @@ async def test_diagnostics_and_device_registry(
     assert diag["state"]["is_on"] is True
     assert diag["profile"]["brightness_scale"] == 255
     assert diag["bluetooth"]["seen_by_connectable_adapter"] is True
-    # The raw conversation so far: the initial poll's four queries and replies.
-    assert [f["note"] for f in diag["frames"] if f["direction"] == "tx"] == ["query"] * 4
+    # The raw conversation so far: the initial poll plus one unanswered optional identity query.
+    assert [f["note"] for f in diag["frames"] if f["direction"] == "tx"] == ["query"] * 5
     assert [f["note"] for f in diag["frames"] if f["direction"] == "rx"] == ["reply"] * 4
     assert protocol.mode_query_frame().hex() in [f["frame"] for f in diag["frames"]]
     assert all(f["at"].endswith("+00:00") for f in diag["frames"])
@@ -654,3 +655,32 @@ async def test_firmware_refreshes_after_reconnect(
     assert device.firmware_history[0]["current"] == "1.00.18"
     await device.async_update()
     assert len(device.firmware_history) == 1
+
+
+async def test_hardware_registry_and_cached_diagnostic_entities(
+    hass: HomeAssistant, bluetooth_ready, fake_client: FakeGoveeClient, device_registry
+) -> None:
+    # Hardware string from the saved H6159 census, delivered by the fake transport.
+    fake_client.replies[protocol.CMD_DEVICE_INFO] = protocol.build_frame(
+        7, [3, *b"1.00.02"], frame_type=0xAA
+    )
+    entry = await setup_entry(hass)
+    registry = er.async_get(hass)
+    light = registry.async_get(ENTITY_ID)
+    assert device_registry.async_get(light.device_id).hw_version == "1.00.02"
+    sensor_id = "sensor.ihoment_h6159_02db_readback_profile"
+    sensor = registry.async_get(sensor_id)
+    assert sensor is not None and sensor.disabled_by == er.RegistryEntryDisabler.INTEGRATION
+    assert sensor.entity_category.value == "diagnostic"
+    assert sensor.device_id == light.device_id
+    registry.async_update_entity(sensor_id, disabled_by=None)
+    await hass.async_block_till_done()
+    # Disabled entities are added on reload; no per-sensor BLE query is required.
+    from custom_components.govee_bluetooth.sensor import GoveeDiagnostic
+
+    count = len(fake_client.writes)
+    assert (
+        GoveeDiagnostic(entry.runtime_data, "profile", "Profile").native_value == "h6159-captured"
+    )
+    assert GoveeDiagnostic(entry.runtime_data, "ic_count", "IC count").native_value is None
+    assert len(fake_client.writes) == count

@@ -20,6 +20,7 @@ from dataclasses import dataclass, field
 from . import protocol
 from .advertisement import GoveeAdvertisement
 from .probe import ProbeConnectionLost, ProbeLink
+from .readback import PageLayout
 
 SCHEMA = "govee-evidence/1"
 
@@ -177,6 +178,7 @@ async def async_census(
     abort: Callable[[], bool] | None = None,
     ask: Callable[[int, tuple[int, int, int]], Awaitable[str | None]] | None = None,
     notify: Callable[[str], None] | None = None,
+    page_layout: PageLayout | None = None,
 ) -> CensusResult:
     """Run the read battery (and the probe if asked) over a connected, subscribed link.
 
@@ -185,19 +187,24 @@ async def async_census(
     "yes", "no", "wrong", "partial", or None to stop (the light is still
     restored). Links that expose an ``ack_log`` list of ``(cmd, status)``
     pairs get each probe write's application ack recorded too.
+    Colour-page echoes require an explicit qualified ``page_layout``.
     """
     result = CensusResult(connected=True, subscribed=True)
     try:
-        await _reads(link, result, abort)
+        await _reads(link, result, abort, page_layout)
         if probe_writes and not result.silent and not result.aborted:
-            await _probe(link, result, abort, ask, notify)
+            await _probe(link, result, abort, ask, notify, page_layout)
     except ProbeConnectionLost as err:
         result.error = f"disconnected: {err}"
     return result
 
 
 async def _query(
-    link: ProbeLink, result: CensusResult, frame: bytes, abort: Callable[[], bool] | None
+    link: ProbeLink,
+    result: CensusResult,
+    frame: bytes,
+    abort: Callable[[], bool] | None,
+    page_layout: PageLayout | None = None,
 ):
     if abort is not None and abort():
         result.aborted = True
@@ -206,10 +213,17 @@ async def _query(
     reply = await link.query(frame, frame[1])
     if reply is not None:
         result.replies += 1
+        if page_layout is not None and frame[1] == page_layout.command:
+            reply.segment_records = page_layout.decode(reply.raw)
     return reply
 
 
-async def _reads(link: ProbeLink, result: CensusResult, abort: Callable[[], bool] | None) -> None:
+async def _reads(
+    link: ProbeLink,
+    result: CensusResult,
+    abort: Callable[[], bool] | None,
+    page_layout: PageLayout | None = None,
+) -> None:
     core_timeouts = 0
     reply = await _query(link, result, protocol.power_query_frame(), abort)
     if reply is not None:
@@ -244,7 +258,7 @@ async def _reads(link: ProbeLink, result: CensusResult, abort: Callable[[], bool
     if reply is not None and reply.secret_present:
         result.secret_present = True
         result.secret = reply.secret
-    reply = await _query(link, result, protocol.segment_colors_query_frame(1), abort)
+    reply = await _query(link, result, protocol.segment_colors_query_frame(1), abort, page_layout)
     if reply is not None:
         result.segment_page = reply
 
@@ -301,6 +315,7 @@ async def _probe(
     abort: Callable[[], bool] | None,
     ask: Callable[[int, tuple[int, int, int]], Awaitable[str | None]] | None = None,
     notify: Callable[[str], None] | None = None,
+    page_layout: PageLayout | None = None,
 ) -> None:
     result.probed = True
     powered_on = result.power is False
@@ -336,7 +351,9 @@ async def _probe(
             if submode in (protocol.SUBMODE_COLOR_LEGACY, protocol.SUBMODE_COLOR_RGBWW):
                 echoed = reply.mode.rgb == rgb and not stale_mode
             last_mode_rgb = _mode_rgb(reply.mode)
-        reply = await _query(link, result, protocol.segment_colors_query_frame(1), abort)
+        reply = await _query(
+            link, result, protocol.segment_colors_query_frame(1), abort, page_layout
+        )
         if reply is not None:
             if protocol.segment_page_has(reply, rgb) and not stale_page:
                 echoed = True

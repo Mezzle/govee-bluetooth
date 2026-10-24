@@ -10,7 +10,7 @@ from __future__ import annotations
 import asyncio
 from collections.abc import Awaitable, Callable, Iterable
 
-from . import protocol
+from . import protocol, readback
 
 
 class ConnectionLost(Exception):
@@ -29,6 +29,8 @@ class FrameExchange:
         self._timeout = timeout
         self._queries = asyncio.Lock()
         self._pending: tuple[bytes, asyncio.Future[protocol.Reply]] | None = None
+        self._bulk_pending: tuple[int, asyncio.Future[bytes]] | None = None
+        self._bulk = readback.BulkAssembler()
         self._generation = 0
         self._closed = False
         self.write_response = True
@@ -45,6 +47,12 @@ class FrameExchange:
     def disconnected(self) -> None:
         """Fail active and queued queries, without cancelling their caller tasks."""
         self._closed = True
+        self._bulk.reset()
+        if self._bulk_pending is not None:
+            _, future = self._bulk_pending
+            self._bulk_pending = None
+            if not future.done():
+                future.set_exception(ConnectionLost("link closed"))
         self._generation += 1
         if self._pending is not None:
             _, future = self._pending
@@ -78,12 +86,45 @@ class FrameExchange:
                 else:
                     future.cancel()
 
+    async def query_bulk(self, frame: bytes) -> bytes | None:
+        """One explicitly selected AC transaction; bounded by the query timeout."""
+        generation = self._generation
+        async with self._queries:
+            if self._closed or generation != self._generation:
+                raise ConnectionLost("link closed")
+            future: asyncio.Future[bytes] = asyncio.get_running_loop().create_future()
+            self._bulk.reset()
+            self._bulk_pending = (frame[1], future)
+            try:
+                await self.write(frame)
+                return await asyncio.wait_for(future, self._timeout)
+            except TimeoutError:
+                return None
+            finally:
+                self._bulk_pending = None
+                self._bulk.reset()
+                if future.done() and not future.cancelled():
+                    future.exception()
+                else:
+                    future.cancel()
+
     def receive(self, frame: bytes) -> tuple[str, protocol.Reply | None]:
         """Validate and route a plaintext frame; return its presentation category."""
-        if len(frame) == protocol.FRAME_LENGTH and not protocol.verify_frame(frame):
+        if not protocol.verify_frame(frame):
+            self._bulk.reset()
             return "bad_checksum", None
         if len(frame) == protocol.FRAME_LENGTH and frame[0] == protocol.TYPE_WRITE:
             return ("ack" if frame[2] == 0 else "ack_error"), None
+        if frame[:1] == b"\xac":
+            if self._bulk_pending is None:
+                return "unsolicited_bulk", None
+            command, future = self._bulk_pending
+            if frame[1] == 0 and frame[5] != command:
+                return "unmatched_bulk", None
+            data = self._bulk.feed(frame)
+            if data is not None and not future.done():
+                future.set_result(data)
+            return "bulk", None
         reply = protocol.parse_reply(frame)
         if reply is None:
             return "unparsed", None

@@ -1,3 +1,9 @@
+> Implementation status (2026-10-24): this historical protocol reference includes
+> hypotheses and older universal-layout descriptions. For the current allowlist,
+> AA A2/A5 record counts, AC final-packet handling, profile-specific EE30 masks,
+> and BGC format correction, see [readback implementation](ble-readback-implementation.md)
+> and its linked source reports. Helpers do not establish runtime authentication.
+
 # Govee BLE control protocol for lights: reference
 
 Research notes, 2026-10-19, for the `govee_bluetooth` Home Assistant integration.
