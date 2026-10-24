@@ -668,7 +668,11 @@ async def test_hardware_registry_and_cached_diagnostic_entities(
     registry = er.async_get(hass)
     light = registry.async_get(ENTITY_ID)
     assert device_registry.async_get(light.device_id).hw_version == "1.00.02"
-    sensor_id = "sensor.ihoment_h6159_02db_readback_profile"
+    # Home Assistant versions differ in how they prefix disabled entity names.
+    sensor_id = registry.async_get_entity_id(
+        "sensor", DOMAIN, f"{ADDRESS.replace(':', '').lower()}_profile"
+    )
+    assert sensor_id is not None
     sensor = registry.async_get(sensor_id)
     assert sensor is not None and sensor.disabled_by == er.RegistryEntryDisabler.INTEGRATION
     assert sensor.entity_category.value == "diagnostic"
