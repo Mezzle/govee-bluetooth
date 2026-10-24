@@ -38,7 +38,7 @@ from bleak_retry_connector import (
 from homeassistant.components import bluetooth
 from homeassistant.core import HomeAssistant, callback
 
-from . import probe, protocol
+from . import advertisement, probe, protocol, readback
 from .const import CONTROL_CHARACTERISTIC_UUID, STATUS_CHARACTERISTIC_UUID
 from .exchange import ConnectionLost, FrameExchange
 from .models import ModelProfile, brightness_scale_for_submode
@@ -84,6 +84,22 @@ class GoveeState:
     effect: str | None = None
     firmware: str | None = None
     extra: dict[str, Any] = field(default_factory=dict)
+    hardware: str | None = None
+    provenance: dict[str, dict[str, Any]] = field(
+        default_factory=lambda: {
+            key: {"source": "unknown", "at": None}
+            for key in (
+                "is_on",
+                "brightness",
+                "rgb_color",
+                "color_temp_kelvin",
+                "effect",
+                "white_mode",
+                "firmware",
+                "hardware",
+            )
+        }
+    )
 
 
 class GoveeBleDevice:
@@ -119,6 +135,15 @@ class GoveeBleDevice:
         self._client: BleakClientWithServiceCache | None = None
         self._expected_disconnect = False
         self._firmware_checked = False
+        self.pact: tuple[int, int] | None = None
+        self.read_profile = readback.resolve(profile.model, None, None)
+        self.optional_reads: dict[str, dict[str, Any]] = {}
+        self._identity_key: tuple | None = None
+        self.optional_read_failures = 0
+        self.command_rejections = 0
+        self.last_observation: str | None = None
+        self.last_command_acceptance: str | None = None
+        self.desired_state: dict[str, Any] = {}
         self.firmware_history: deque[dict[str, str]] = deque(maxlen=10)
         self.control_properties: tuple[str, ...] = ()
         self.write_response: bool | None = None
@@ -164,7 +189,28 @@ class GoveeBleDevice:
         return _remove
 
     @callback
-    def _set_state(self, **changes: Any) -> None:
+    def _set_state(self, *, source: str = "observed", **changes: Any) -> None:
+        now = datetime.now(UTC).isoformat(timespec="milliseconds")
+        provenance = {**changes.get("provenance", self.state.provenance)}
+        for key in changes:
+            if key not in ("extra", "provenance"):
+                provenance[key] = {
+                    "source": "unknown" if changes[key] is None else source,
+                    "at": now,
+                }
+        changes["provenance"] = provenance
+        if source == "observed" and any(
+            k in changes
+            for k in (
+                "is_on",
+                "brightness",
+                "rgb_color",
+                "color_temp_kelvin",
+                "white_mode",
+                "effect",
+            )
+        ):
+            self.last_observation = now
         new_state = replace(self.state, **changes)
         if new_state == self.state:
             return
@@ -192,7 +238,7 @@ class GoveeBleDevice:
 
         if effect is not None and effect in self.profile.scenes:
             frames.append(protocol.scene_frame(self.profile.scenes[effect]))
-            changes.update(effect=effect, white_mode=False)
+            changes.update(effect=effect, white_mode=False, rgb_color=None, color_temp_kelvin=None)
         elif color_temp_kelvin is not None:
             frames.append(protocol.color_temp_frame(color_temp_kelvin, self.profile.color_submode))
             changes.update(
@@ -203,21 +249,27 @@ class GoveeBleDevice:
             )
         elif rgb_color is not None:
             frames.append(protocol.rgb_frame(*rgb_color, submode=self.profile.color_submode))
-            changes.update(rgb_color=tuple(rgb_color), white_mode=False, effect=None)
+            changes.update(
+                rgb_color=tuple(rgb_color), white_mode=False, color_temp_kelvin=None, effect=None
+            )
 
         if brightness is not None:
             frames.append(protocol.brightness_frame(brightness, self.profile.brightness_scale))
             changes["brightness"] = brightness
 
         await self._async_write_frames(frames)
-        self._set_state(**changes)
+        self.desired_state.update(changes)
+        self._set_state(source="optimistic", **changes)
+        if changes.get("white_mode") and "color_temp_kelvin" in changes:
+            self._mark_derived("rgb_color")
 
     async def async_turn_off(self) -> None:
         await self._async_write_frames([protocol.power_frame(False)])
-        self._set_state(is_on=False)
+        self.desired_state["is_on"] = False
+        self._set_state(source="optimistic", is_on=False)
 
     async def async_update(self) -> GoveeState:
-        """Read power, brightness and mode from the light."""
+        """Refresh basic state followed by the selected optional read contract."""
         async with self._lock:
             self._in_flight = asyncio.current_task()
             await self._async_connect()
@@ -228,15 +280,27 @@ class GoveeBleDevice:
                 firmware = None
                 if not self._firmware_checked:
                     firmware = await self._exchange.query(protocol.version_query_frame())
+                    self._firmware_checked = True
+                self._merge_poll(power, brightness, mode, firmware)
+                await self._collect_optional(
+                    firmware.version if firmware else self.state.firmware,
+                    mode.mode if mode else None,
+                )
+                if (
+                    power is None
+                    and brightness is None
+                    and mode is None
+                    and not self.state.extra.get("bulk_complete")
+                ):
+                    raise GoveeConnectionError(f"{self.name} did not answer any status query")
             except (BleakError, OSError, ConnectionLost) as err:
                 await self._async_disconnect_locked()
                 raise GoveeConnectionError(f"Status read from {self.name} failed: {err}") from err
             finally:
                 self._touch()
+        return self.state
 
-        if power is None and brightness is None and mode is None:
-            raise GoveeConnectionError(f"{self.name} did not answer any status query")
-
+    def _merge_poll(self, power, brightness, mode, firmware) -> None:
         changes: dict[str, Any] = {}
         if firmware is not None and firmware.version:
             changes["firmware"] = firmware.version
@@ -261,7 +325,7 @@ class GoveeBleDevice:
             changes["is_on"] = power.power
         if brightness is not None and brightness.brightness_level is not None:
             changes["brightness"] = protocol.device_to_ha_brightness(
-                brightness.brightness_level, self.profile.brightness_scale
+                brightness.brightness_level, self._read_brightness_scale
             )
         if mode is not None and mode.mode is not None:
             changes.update(self._changes_from_mode(mode.mode))
@@ -269,7 +333,8 @@ class GoveeBleDevice:
             extra = changes.get("extra", self.state.extra)
             changes["extra"] = {**extra, "brightness_raw": brightness.brightness_level}
         self._set_state(**changes)
-        return self.state
+        if mode is not None and mode.mode is not None:
+            self._mark_mode_derivations(mode.mode, changes)
 
     @callback
     def _apply_observed_submode(self, submode: int, firmware: str | None = None) -> None:
@@ -279,6 +344,10 @@ class GoveeBleDevice:
         with the table (the H6181 case) is corrected on first contact, and a
         firmware update that changes dialect is picked up on the next poll.
         """
+        # Preserve the existing captured legacy migration path, but never infer
+        # a writer/brightness scale for additional RGBIC families from one byte.
+        if self.profile.model not in ("H6159", "H6181", "H6006"):
+            return
         if submode not in probe.COLOR_SUBMODES or submode == self.profile.color_submode:
             return
         if self._submode_locked:
@@ -357,27 +426,178 @@ class GoveeBleDevice:
     # Internals
     # ------------------------------------------------------------------
 
+    @property
+    def _read_brightness_scale(self) -> int:
+        # Explicit user override wins; a read contract can otherwise specify a
+        # scale independently of the chosen colour writer.
+        if self._brightness_scale_locked:
+            return self.profile.brightness_scale
+        return self.read_profile.brightness_scale or self.profile.brightness_scale
+
+    def _mark_derived(self, key: str) -> None:
+        provenance = {**self.state.provenance}
+        provenance[key] = {
+            "source": "derived",
+            "at": datetime.now(UTC).isoformat(timespec="milliseconds"),
+        }
+        self._set_state(provenance=provenance)
+
+    def _mark_mode_derivations(self, mode: protocol.ModeReport, changes: dict) -> None:
+        if "color_temp_kelvin" in changes and mode.is_white and mode.color_temp_kelvin is None:
+            self._mark_derived("color_temp_kelvin")
+        if "rgb_color" in changes and (
+            mode.submode == 0x15 or (mode.tint_is_derived and self.profile.model != "H6006")
+        ):
+            self._mark_derived("rgb_color")
+
     def _changes_from_mode(self, mode: protocol.ModeReport) -> dict[str, Any]:
-        changes: dict[str, Any] = {"extra": {**self.state.extra, "submode": mode.submode}}
+        layout = self.read_profile.mode_layout
+        # Historical H6159/H6181 migration remains supported independently of
+        # richer page/push selection and manual writer overrides.
+        if self.profile.model in ("H6159", "H6181", "H6006"):
+            layout = {
+                0x02: "legacy",
+                0x0D: "bulb_rgbww" if self.profile.model == "H6006" else "rgbww",
+            }.get(mode.submode, layout)
+        changes = readback.mode_changes(mode, layout)
+        changes["extra"] = {
+            **self.state.extra,
+            "submode": mode.submode,
+            "mode_body": mode.body.hex(),
+        }
         if mode.submode == protocol.SUBMODE_SCENE:
             changes["effect"] = self._scene_names.get(mode.scene_id, f"Scene {mode.scene_id}")
-            changes["white_mode"] = False
-        elif mode.rgb is not None:
-            changes["effect"] = None
-            if mode.is_white and mode.white_tint is not None:
-                changes["white_mode"] = True
-                changes["rgb_color"] = mode.white_tint
-                changes["color_temp_kelvin"] = (
-                    mode.color_temp_kelvin
-                    if mode.color_temp_kelvin is not None
-                    else protocol.rgb_to_kelvin(mode.white_tint)
+        return changes
+
+    async def _optional_query(self, name: str, frame: bytes) -> protocol.Reply | None:
+        # Cache even silence. Never interpret it as zero or unsupported.
+        at = datetime.now(UTC).isoformat(timespec="milliseconds")
+        try:
+            reply = await self._exchange.query(frame)
+        except (BleakError, OSError, ConnectionLost):
+            reply = None
+        self.optional_reads[name] = {"outcome": "answered" if reply else "unanswered", "at": at}
+        if reply is None:
+            self.optional_read_failures += 1
+        return reply
+
+    async def _collect_optional(
+        self, firmware: str | None, mode_report: protocol.ModeReport | None
+    ) -> None:
+        info = bluetooth.async_last_service_info(self._hass, self.address, connectable=True)
+        adv = advertisement.parse_manufacturer_data(info.manufacturer_data) if info else None
+        if adv:
+            self.pact = (adv.pact_type, adv.pact_code)
+        self.read_profile = readback.resolve(self.profile.model, self.pact, firmware)
+        key = (self.profile.model, self.pact, firmware, self.read_profile.key)
+        if key != self._identity_key:
+            extra = {
+                k: v
+                for k, v in self.state.extra.items()
+                if not k.startswith(("segment_", "pages_", "bulk_"))
+            }
+            self._set_state(extra=extra)
+            self.optional_reads.clear()
+            self._identity_key = key
+        if self.read_profile.hardware and "hardware" not in self.optional_reads:
+            reply = await self._optional_query("hardware", protocol.hardware_query_frame())
+            if reply and reply.hardware:
+                self._set_state(hardware=reply.hardware)
+        form = self.read_profile.topology
+        if form and "topology" not in self.optional_reads:
+            command = {"ic_pair": 0x40, "ic_two_pairs": 0x40, "section": 0x41, "bulb": 0x0F}[form]
+            reply = await self._optional_query(
+                "topology", protocol.build_frame(command, frame_type=0xAA)
+            )
+            decoded = readback.topology(reply.raw, form) if reply else None
+            self.optional_reads["topology"]["raw"] = reply.raw.hex() if reply else None
+            self.optional_reads["topology"]["decoded"] = decoded
+            if reply and decoded is None:
+                self.optional_reads["topology"]["outcome"] = "invalid"
+        if (
+            self.read_profile.bulk
+            and self.optional_reads.get("bulk", {}).get("outcome") != "unanswered"
+        ):
+            try:
+                data = await self._exchange.query_bulk(
+                    protocol.build_frame(0x03, [2, 0x41, 0x30], frame_type=0xAC)
+                )
+            except (BleakError, OSError, ConnectionLost):
+                data = None
+            self.optional_reads["bulk"] = {
+                "outcome": "answered" if data is not None else "unanswered",
+                "at": datetime.now(UTC).isoformat(timespec="milliseconds"),
+            }
+            extra = {
+                "bulk_complete": data is not None,
+                "bulk_at": datetime.now(UTC).isoformat(timespec="milliseconds"),
+            }
+            if data is not None:
+                records, tail = readback.tlvs(data)
+                extra.update(
+                    bulk_raw=data.hex(),
+                    bulk_tail=tail.hex(),
+                    bulk_tlv_complete=not tail,
+                    bulk_tlvs=[{"tag": tag, "value": value.hex()} for tag, value in records],
+                )
+                # Unknown TLVs remain diagnostic data. Empty mode is not mode zero.
+                for tag, value in records:
+                    if tag not in (0x01, 0x04, 0x05) or not value or len(value) > 17:
+                        continue
+                    if tag == 0x05 and len(value) < {0x02: 8, 0x0D: 6, 0x15: 4, 0x04: 3}.get(
+                        value[0], 1
+                    ):
+                        continue  # A short TLV must not become zero-padded colour state.
+                    reply = protocol.parse_reply(protocol.build_frame(tag, value, frame_type=0xAA))
+                    if reply:
+                        self._apply_partial_reply(reply)
+            else:
+                self.optional_read_failures += 1
+            self._set_state(extra={**self.state.extra, **extra})
+        layout = self.read_profile.pages
+        if layout is None or self.optional_reads.get("colors", {}).get("outcome") == "unanswered":
+            return
+        # One bounded complete page set, only in static colour mode. Retain
+        # partial pages as diagnostics, never assert whole-strip RGB from one.
+        mode = mode_report.submode if mode_report else None
+        if mode not in (0x0B, 0x15) or mode_report.color_temp_kelvin:
+            return
+        pages = {}
+        for group in range(1, len(layout.counts) + 1):
+            try:
+                reply = await self._exchange.query(layout.query(group))
+            except (BleakError, OSError, ConnectionLost):
+                reply = None
+            if reply is None:
+                break
+            records = layout.decode(reply.raw)
+            if records is None:
+                break
+            pages[group] = [{"brightness": r.brightness, "rgb": r.rgb} for r in records]
+        complete = len(pages) == len(layout.counts)
+        self.optional_reads["colors"] = {
+            "outcome": "answered" if complete else "unanswered",
+            "at": datetime.now(UTC).isoformat(timespec="milliseconds"),
+        }
+        if not complete:
+            self.optional_read_failures += 1
+        extra = {
+            **self.state.extra,
+            "segment_pages": pages,
+            "pages_complete": complete,
+            "pages_at": datetime.now(UTC).isoformat(timespec="milliseconds"),
+        }
+        self._set_state(extra=extra)
+        if complete:
+            colors = [r["rgb"] for page in pages.values() for r in page]
+            if len(set(colors)) == 1:
+                self._set_state(
+                    rgb_color=colors[0], white_mode=False, color_temp_kelvin=None, effect=None
                 )
             else:
-                changes["white_mode"] = False
-                changes["rgb_color"] = mode.rgb
-        else:
-            changes["effect"] = None
-        return changes
+                self._set_state(
+                    rgb_color=None, color_temp_kelvin=None, white_mode=False, effect=None
+                )
 
     def _ble_device(self) -> BLEDevice | None:
         return bluetooth.async_ble_device_from_address(self._hass, self.address, connectable=True)
@@ -470,12 +690,39 @@ class GoveeBleDevice:
         frame = bytes(data)
         _LOGGER.debug("%s <- %s", self.name, frame.hex())
         note, reply = self._exchange.receive(frame)
+        if frame[:1] == b"\xee":
+            push_reply = readback.push(frame, self.read_profile)
+            if push_reply is not None:
+                reply = push_reply
+                note = "unsolicited"
         self._record_frame("rx", frame, note)
+        if note == "ack":
+            self.last_command_acceptance = datetime.now(UTC).isoformat(timespec="milliseconds")
+        if note == "ack_error":
+            self.command_rejections += 1
         if note != "unsolicited" or reply is None:
             return
-        # Unsolicited reply, most likely to a heartbeat: keep power state fresh.
+        self._apply_partial_reply(reply)
+
+    def _apply_partial_reply(self, reply: protocol.Reply) -> None:
+        changes = {}
         if reply.power is not None:
-            self._set_state(is_on=reply.power)
+            changes["is_on"] = reply.power
+        if reply.brightness_level is not None:
+            changes["brightness"] = protocol.device_to_ha_brightness(
+                reply.brightness_level, self._read_brightness_scale
+            )
+        if reply.mode is not None:
+            changes.update(self._changes_from_mode(reply.mode))
+        if reply.brightness_level is not None:
+            changes["extra"] = {
+                **changes.get("extra", self.state.extra),
+                "brightness_raw": reply.brightness_level,
+            }
+        if changes:
+            self._set_state(**changes)
+            if reply.mode:
+                self._mark_mode_derivations(reply.mode, changes)
 
     @callback
     def _on_disconnected(self, _client: Any) -> None:

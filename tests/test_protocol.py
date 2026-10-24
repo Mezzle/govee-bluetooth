@@ -252,7 +252,12 @@ def test_parse_capability_replies() -> None:
             frame_type=0xAA,
         )
     )
-    assert page is not None and page.segment_group == 1 and len(page.segment_records or []) == 3
+    from custom_components.govee_bluetooth.readback import PageLayout
+
+    assert page is not None and page.segment_group == 1
+    assert page.segment_records is None  # An opcode alone does not select geometry.
+    page.segment_records = PageLayout(0xA5, (3,), 4).decode(page.raw)
+    assert len(page.segment_records or []) == 3
     assert (
         page.segment_records[1].rgb == (0xAA, 0x55, 0x11)
         and page.segment_records[1].brightness == 100

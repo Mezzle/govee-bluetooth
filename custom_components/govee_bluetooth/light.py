@@ -56,6 +56,7 @@ class GoveeBleLight(CoordinatorEntity[GoveeCoordinator], LightEntity):
             model=device.profile.model,
             name=device.name,
             sw_version=device.state.firmware,
+            hw_version=device.state.hardware,
         )
         # The model's measured range; HA's colour-temperature slider and any
         # service call get clamped to it rather than to the widest family.
@@ -99,7 +100,10 @@ class GoveeBleLight(CoordinatorEntity[GoveeCoordinator], LightEntity):
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
-        attrs: dict[str, Any] = {"bluetooth_address": self.coordinator.device.address}
+        attrs: dict[str, Any] = {
+            "bluetooth_address": self.coordinator.device.address,
+            "field_provenance": self._state.provenance,
+        }
         if self._state.firmware:
             attrs["firmware"] = self._state.firmware
         return attrs
@@ -108,6 +112,9 @@ class GoveeBleLight(CoordinatorEntity[GoveeCoordinator], LightEntity):
         firmware = self._state.firmware
         if firmware and self.device_entry and self.device_entry.sw_version != firmware:
             dr.async_get(self.hass).async_update_device(self.device_entry.id, sw_version=firmware)
+        hardware = self._state.hardware
+        if hardware and self.device_entry and self.device_entry.hw_version != hardware:
+            dr.async_get(self.hass).async_update_device(self.device_entry.id, hw_version=hardware)
         super()._handle_coordinator_update()
 
     async def async_turn_on(self, **kwargs: Any) -> None:

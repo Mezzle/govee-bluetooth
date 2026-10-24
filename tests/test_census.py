@@ -7,6 +7,7 @@ import pytest
 from custom_components.govee_bluetooth import census, protocol
 from custom_components.govee_bluetooth.advertisement import parse_raw
 from custom_components.govee_bluetooth.probe import ProbeConnectionLost
+from custom_components.govee_bluetooth.readback import PageLayout
 
 
 def _reply(cmd: int, *payload: int) -> bytes:
@@ -147,14 +148,18 @@ async def test_silent_light_is_bounded_to_three_reads() -> None:
 @pytest.mark.parametrize("speaks", [0x02, 0x0D, 0x15, 0x0B])
 async def test_probe_echo_is_per_dialect(speaks: int) -> None:
     light = FakeLight(speaks=speaks, has_page=True)
-    result = await census.async_census(light, probe_writes=True)
+    result = await census.async_census(
+        light, probe_writes=True, page_layout=PageLayout(0xA5, (3,), 4)
+    )
     assert result.probed
     assert result.echoed == [speaks]
 
 
 async def test_probe_ignores_a_colour_that_was_already_showing() -> None:
     light = FakeLight(speaks=0x15, rgb=census.PROBE_COLORS[0x02])
-    result = await census.async_census(light, probe_writes=True)
+    result = await census.async_census(
+        light, probe_writes=True, page_layout=PageLayout(0xA5, (3,), 4)
+    )
     assert result.echoed == [0x15]
 
 
@@ -196,7 +201,9 @@ def _classified(result: census.CensusResult, model: str, adv=H617A_ADV, bgc=None
 
 
 async def test_classify_verified_from_echo() -> None:
-    result = await census.async_census(FakeLight(speaks=0x15), probe_writes=True)
+    result = await census.async_census(
+        FakeLight(speaks=0x15), probe_writes=True, page_layout=PageLayout(0xA5, (3,), 4)
+    )
     verdict = _classified(result, "H617A")
     assert (verdict.family, verdict.security, verdict.confidence) == (
         "plaintext-rgbic",
@@ -238,7 +245,7 @@ async def test_classify_encrypted_from_flag_and_bgc() -> None:
     )
     v2 = _classified(result, "H1270", adv=ENCRYPTED_ADV, bgc=b"\x01\x02")
     assert (v2.family, v2.security, v2.confidence) == ("encrypted-v2", "aes-gcm", "probable")
-    v1 = _classified(result, "H600B", adv=None, bgc=b"\x01\x00")
+    v1 = _classified(result, "H600B", adv=None, bgc=b"\x01\x01")
     assert (v1.family, v1.security) == ("encrypted-v1", "aes-ecb-rc4")
     assert _classified(census.CensusResult(), "H6159").family == "unreachable"
 
@@ -454,3 +461,11 @@ def test_ota_partial_ti_service_is_not_complete():
     )
     assert report["transports"][0]["transport"] == "ti_oad_v2"
     assert not report["transports"][0]["complete"]
+
+
+async def test_unqualified_page_does_not_confirm_a_dialect() -> None:
+    result = await census.async_census(FakeLight(speaks=0x15), probe_writes=True)
+    assert result.echoed == []
+    assert result.segment_page is not None
+    assert result.segment_page.raw
+    assert result.segment_page.segment_records is None

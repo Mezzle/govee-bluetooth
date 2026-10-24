@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Final
 
 DOMAIN: Final = "govee_bluetooth"
-PLATFORMS: Final = ["light"]
+PLATFORMS: Final = ["light", "sensor"]
 
 CONF_ADDRESS: Final = "address"
 CONF_NAME: Final = "name"

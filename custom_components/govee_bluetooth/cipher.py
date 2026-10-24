@@ -247,22 +247,17 @@ class V2Session:
 
 
 def bgc_encrypt_version(bgc: bytes) -> tuple[int | None, str]:
-    """A reading of the 2b12 bytes: ``(version, provenance)``.
+    """Read a qualified BGC format discriminator followed by encryption version.
 
-    The two sources disagree on the byte: the decompiled app reads byte 0,
-    lasswellt's H1270 carried ``01 02`` with the version at byte 1. With
-    ``00 ..`` the answer is plaintext either way; otherwise report the
-    larger candidate and say which rule produced it.
+    Format 2 also carries broadcast flags and pact. Unknown/short formats
+    remain unknown; missing BGC is not evidence of plaintext or authentication.
     """
     bgc = bytes(bgc)
     if not bgc:
         return None, "no bgc bytes"
-    b0 = bgc[0]
-    b1 = bgc[1] if len(bgc) > 1 else 0
-    if b0 == 0 and b1 == 0:
-        return 0, "both candidate bytes zero (plaintext)"
-    if b1 == 2:
-        return 2, "byte 1 == 2 (lasswellt H1270 rule)"
-    if b0 in (1, 2) and b1 == 0:
-        return b0, "byte 0 (decompiled-app rule)"
-    return max(b0, b1), "ambiguous: bytes disagree with both documented rules"
+    if bgc[0] not in (1, 2):
+        return None, "unknown BGC format"
+    minimum = 2 if bgc[0] == 1 else 6
+    if len(bgc) < minimum:
+        return None, "incomplete BGC format"
+    return bgc[1], f"BGC format {bgc[0]}, encryption version at byte 1"

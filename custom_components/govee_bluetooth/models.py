@@ -1,9 +1,9 @@
 """Model profiles and advertisement-name parsing for Govee BLE lights.
 
-Govee reuses a handful of wire dialects across many SKUs. The only per-model
-facts this integration needs are which colour sub-mode byte the firmware
-expects and how it scales brightness. Everything else (framing, checksum,
-status reads) is shared.
+Govee reuses a handful of write dialects across many SKUs. This table describes
+colour writers, their brightness prior and manual overrides. It does not grant
+readback or notification capabilities; those have separate evidence-qualified
+contracts in readback.py.
 """
 
 from __future__ import annotations

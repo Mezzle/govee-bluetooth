@@ -47,6 +47,16 @@ async def async_get_config_entry_diagnostics(
             "in_use": device.profile.color_submode,
         },
         "state": asdict(device.state),
+        "readback_profile": asdict(device.read_profile),
+        "pact": device.pact,
+        "desired_state": device.desired_state,
+        "optional_reads": device.optional_reads,
+        "host_diagnostics": {
+            "optional_read_failures": device.optional_read_failures,
+            "command_rejections": device.command_rejections,
+            "last_state_observation": device.last_observation,
+            "last_command_acceptance": device.last_command_acceptance,
+        },
         "firmware_history": list(device.firmware_history),
         "bluetooth": {
             "seen_by_connectable_adapter": coordinator.available,

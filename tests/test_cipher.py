@@ -118,9 +118,12 @@ def test_v2_session_counters_and_tag() -> None:
 
 
 def test_bgc_version_reading_reports_its_rule() -> None:
-    assert cipher.bgc_encrypt_version(b"\x00\x00") == (0, "both candidate bytes zero (plaintext)")
+    assert cipher.bgc_encrypt_version(b"\x00\x00")[0] is None
     assert cipher.bgc_encrypt_version(b"\x01\x02\x00")[0] == 2
-    assert "H1270" in cipher.bgc_encrypt_version(b"\x01\x02")[1]
-    assert cipher.bgc_encrypt_version(b"\x01\x00")[0] == 1
+    assert "byte 1" in cipher.bgc_encrypt_version(b"\x01\x02")[1]
+    assert cipher.bgc_encrypt_version(b"\x01\x00")[0] == 0
+    assert cipher.bgc_encrypt_version(b"\x02\x01\x03\x00\x0a\x01")[0] == 1
+    assert cipher.bgc_encrypt_version(b"\x02\x01")[0] is None
+    assert cipher.bgc_encrypt_version(b"\x01")[0] is None
     assert cipher.bgc_encrypt_version(b"")[0] is None
-    assert "ambiguous" in cipher.bgc_encrypt_version(b"\x05\x07")[1]
+    assert cipher.bgc_encrypt_version(b"\x05\x07")[0] is None
