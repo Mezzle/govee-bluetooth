@@ -272,6 +272,12 @@ answers status queries the way real firmware does.
 
 ### Bench test rig
 
+Research on additional state readback, IC/topology diagnostics and app-independent
+BLE control is collected in
+[BLE readback and control research](docs/ble-readback-and-control-research-2026-10-24.md).
+It distinguishes existing support, source-derived possibilities and work requiring
+later hardware qualification.
+
 `tools/govee_rig.py` drives a light from any Linux machine with BlueZ (a
 Raspberry Pi next to the strip, for instance) using the same `protocol.py`,
 `models.py` and `probe.py` as the integration, with no Home Assistant
